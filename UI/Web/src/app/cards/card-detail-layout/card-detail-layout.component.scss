@@ -5,9 +5,19 @@
     height: calc((var(--vh) *100) - 157px);
     margin-bottom: 10px;
 
+    &.expanded {
+      height: calc((var(--vh) *100) - 520px);
+    }
+
+
+
     &.empty {
         height: auto;
     }
+}
+
+::ng-deep .viewport-container.expanded  .virtual-scroller, ::ng-deep .viewport-container.expanded virtual-scroller {
+  height: calc((var(--vh) *100) - 520px);
 }
 
 .content-container {

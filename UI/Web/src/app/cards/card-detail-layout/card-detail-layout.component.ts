@@ -1,4 +1,4 @@
-import {DOCUMENT, NgClass, NgForOf, NgTemplateOutlet} from '@angular/common';
+import {AsyncPipe, DOCUMENT, NgClass, NgForOf, NgTemplateOutlet} from '@angular/common';
 import {
   ChangeDetectionStrategy,
   ChangeDetectorRef,
@@ -36,9 +36,10 @@ import {MetadataFilterComponent} from "../../metadata-filter/metadata-filter.com
 import {TranslocoDirective} from "@jsverse/transloco";
 import {CardActionablesComponent} from "../../_single-module/card-actionables/card-actionables.component";
 import {SeriesFilterV2} from "../../_models/metadata/v2/series-filter-v2";
-import {filter, map} from "rxjs/operators";
+import {filter, map, startWith} from "rxjs/operators";
 import {takeUntilDestroyed} from "@angular/core/rxjs-interop";
-import {tap} from "rxjs";
+import {of, pipe, tap} from "rxjs";
+import { ToggleService } from 'src/app/_services/toggle.service';
 
 
 const ANIMATION_TIME_MS = 0;
@@ -47,7 +48,7 @@ const ANIMATION_TIME_MS = 0;
   selector: 'app-card-detail-layout',
   standalone: true,
   imports: [LoadingComponent, VirtualScrollerModule, CardActionablesComponent, NgbTooltip, MetadataFilterComponent,
-    TranslocoDirective, NgTemplateOutlet, NgClass, NgForOf],
+    TranslocoDirective, NgTemplateOutlet, NgClass, NgForOf, AsyncPipe],
   templateUrl: './card-detail-layout.component.html',
   styleUrls: ['./card-detail-layout.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -60,6 +61,7 @@ export class CardDetailLayoutComponent implements OnInit, OnChanges {
   private readonly jumpbarService = inject(JumpbarService);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly toggleService = inject(ToggleService);
 
   protected readonly Breakpoint = Breakpoint;
 
@@ -73,7 +75,7 @@ export class CardDetailLayoutComponent implements OnInit, OnChanges {
   @Input() parentScroll!: Element | Window;
 
   // Filter Code
-  @Input() filterOpen!: EventEmitter<boolean>;
+  @Input() filterOpen!: EventEmitter<boolean>; // TODO: Remove, we use a toggleservice
   /**
    * Should filtering be shown on the page
    */
@@ -107,6 +109,8 @@ export class CardDetailLayoutComponent implements OnInit, OnChanges {
 
   updateApplied: number = 0;
   bufferAmount: number = 1;
+
+  isFilterOpen$ = this.toggleService.toggleState$.pipe(takeUntilDestroyed(this.destroyRef), startWith(false));
 
 
 
@@ -169,6 +173,7 @@ export class CardDetailLayoutComponent implements OnInit, OnChanges {
         setTimeout(() => this.virtualScroller.scrollToIndex(0, true, 0, ANIMATION_TIME_MS), 10);
       }
     }
+    
   }
 
   hasCustomSort() {
