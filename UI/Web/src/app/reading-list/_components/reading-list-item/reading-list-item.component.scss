@@ -36,7 +36,7 @@ $image-height: 125px;
 }
 
 ::ng-deep .read-more-cont div {
-    -webkit-line-clamp: 4;
+    -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
     overflow: hidden;
     display:-webkit-box;
@@ -45,7 +45,7 @@ $image-height: 125px;
 
 @media (max-width: 576px) {
     ::ng-deep .read-more-cont div {
-        -webkit-line-clamp: 4;
+        -webkit-line-clamp: 3;
         -webkit-box-orient: vertical;
         overflow: hidden;
         display:-webkit-box;
