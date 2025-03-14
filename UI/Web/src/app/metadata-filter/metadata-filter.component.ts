@@ -38,7 +38,7 @@ import {
   Select2UpdateValue
 } from "ng-select2-component";
 import {SmartFilter} from "../_models/metadata/v2/smart-filter";
-import {animate, state, style, transition, trigger} from "@angular/animations";
+import {animate, keyframes, state, style, transition, trigger} from "@angular/animations";
 
 const ANIMATION_SPEED = 750;
 
@@ -55,7 +55,11 @@ const ANIMATION_SPEED = 750;
           [
             style({ height: 0, opacity: 0 }),
             animate('.5s ease-out',
-              style({ height: 300, opacity: 1 }))
+              keyframes([
+                style({ height: 300, offset: 0}),
+                style({ opacity: 1, offset: 0.8 })
+              ])
+            )
           ]
         ),
         transition(
@@ -63,9 +67,14 @@ const ANIMATION_SPEED = 750;
           [
             style({ height: 300, opacity: 1 }),
             animate('.5s ease-in',
-              style({ height: 0, opacity: 0 }))
-          ]
-        )
+              keyframes([
+                
+                style({ opacity: 0, offset: 0 }),
+                style({ height: 0, offset: 0.8})
+              ])
+            )
+          ],
+        ),
       ]
     ),
   ],
