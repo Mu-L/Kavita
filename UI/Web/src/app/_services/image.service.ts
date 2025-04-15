@@ -109,6 +109,13 @@ export class ImageService {
     return `${this.baseUrl}image/cover-upload?filename=${encodeURIComponent(filename)}&apiKey=${this.encodedKey}`;
   }
 
+  getRandomSeriesCoverImage() {
+    const timestamp = new Date().getTime();
+    const random = Math.random().toString(36).substring(7);
+    return `${this.baseUrl}image/random-series-cover?t=${timestamp}&r=${random}`;
+  }
+
+
   updateErroredWebLinkImage(event: any) {
     event.target.src = this.errorWebLinkImage;
   }

@@ -1,0 +1,12 @@
+<div class="masonry-container" [class.no-images]="noImagesFound">
+  <div class="masonry-grid">
+    <div *ngFor="let image of coverImages" class="masonry-item">
+      <img [ngSrc]="image" width="250" height="357" alt="Series cover" priority (error)="imageService.updateErroredWebLinkImage($event)">
+    </div>
+  </div>
+  <div class="masonry-grid duplicate">
+    <div *ngFor="let image of duplicateImages" class="masonry-item">
+      <img [ngSrc]="image" width="250" height="357" alt="Series cover" priority (error)="imageService.updateErroredWebLinkImage($event)">
+    </div>
+  </div>
+</div> 

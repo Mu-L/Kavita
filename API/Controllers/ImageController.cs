@@ -344,4 +344,22 @@ public class ImageController : BaseApiController
 
         return PhysicalFile(path, MimeTypeMap.GetMimeType(format), _directoryService.FileSystem.Path.GetFileName(path));
     }
+
+    /// <summary>
+    /// Returns cover image for a random Series
+    /// </summary>
+    /// <returns></returns>
+    [HttpGet("random-series-cover")]
+    public async Task<ActionResult> GetRandomSeriesCoverImage()
+    {
+        var path = Path.Join(_directoryService.CoverImageDirectory, await _unitOfWork.SeriesRepository.GetRandomSeriesCoverImageAsync());
+        if (string.IsNullOrEmpty(path) || !_directoryService.FileSystem.File.Exists(path)) return BadRequest("No cover image found");
+        var format = _directoryService.FileSystem.Path.GetExtension(path);
+
+        Response.Headers.Add("Cache-Control", "no-cache, no-store, must-revalidate");
+        Response.Headers.Add("Pragma", "no-cache");
+        Response.Headers.Add("Expires", "0");
+
+        return PhysicalFile(path, MimeTypeMap.GetMimeType(format), _directoryService.FileSystem.Path.GetFileName(path));
+    }
 }

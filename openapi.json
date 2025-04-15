@@ -2950,6 +2950,21 @@
         }
       }
     },
+    "/api/Image/random-series-cover": {
+      "get": {
+        "tags": [
+          "Image"
+        ],
+        "summary": "Returns cover image for a random Series",
+        "parameters": [
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/Library/create": {
       "post": {
         "tags": [

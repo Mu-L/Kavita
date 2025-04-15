@@ -116,6 +116,7 @@ public interface ISeriesRepository
     /// <returns></returns>
     Task AddSeriesModifiers(int userId, IList<SeriesDto> series);
     Task<string?> GetSeriesCoverImageAsync(int seriesId);
+    Task<string?> GetRandomSeriesCoverImageAsync();
     Task<PagedList<SeriesDto>> GetOnDeck(int userId, int libraryId, UserParams userParams, FilterDto? filter);
     Task<PagedList<SeriesDto>> GetRecentlyAdded(int libraryId, int userId, UserParams userParams, FilterDto filter);
     Task<PagedList<SeriesDto>> GetRecentlyAddedV2(int userId, UserParams userParams, FilterV2Dto filter);
@@ -182,6 +183,8 @@ public class SeriesRepository : ISeriesRepository
 
     private readonly Regex _yearRegex = new Regex(@"\d{4}", RegexOptions.Compiled,
         Services.Tasks.Scanner.Parser.Parser.RegexTimeout);
+
+    private static readonly Random _random = new Random();
 
     public SeriesRepository(DataContext context, IMapper mapper, UserManager<AppUser> userManager)
     {
@@ -778,6 +781,19 @@ public class SeriesRepository : ISeriesRepository
             .Where(s => s.Id == seriesId)
             .Select(s => s.CoverImage)
             .SingleOrDefaultAsync();
+    }
+
+    public async Task<string?> GetRandomSeriesCoverImageAsync()
+    {
+        var count = await _context.Series.CountAsync();
+        if (count == 0) return null;
+        
+        var skip = _random.Next(0, count);
+        
+        return await _context.Series
+            .Skip(skip)
+            .Select(s => s.CoverImage)
+            .FirstOrDefaultAsync();
     }
 
 
