@@ -56,9 +56,6 @@ public class Program
             Configuration.JwtToken = Convert.ToBase64String(rBytes).Replace("/", string.Empty);
         }
 
-        Configuration.KavitaPlusApiUrl = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == Environments.Development
-            ?  "http://localhost:5020" : "https://plus.kavitareader.com";
-
         try
         {
             var host = CreateHostBuilder(args).Build();
@@ -88,25 +85,36 @@ public class Program
                 }
 
                 // Apply Before manual migrations that need to run before actual migrations
-                try
+                if (isDbCreated)
                 {
                     Task.Run(async () =>
                         {
                             // Apply all migrations on startup
-                            logger.LogInformation("Running Migrations");
+                            logger.LogInformation("Running Manual Migrations");
 
-                            // v0.7.14
-                            await MigrateWantToReadExport.Migrate(context, directoryService, logger);
+                            try
+                            {
+                                // v0.7.14
+                                await MigrateWantToReadExport.Migrate(context, directoryService, logger);
+
+                                // v0.8.2
+                                await ManualMigrateSwitchToWal.Migrate(context, logger);
+
+                                // v0.8.4
+                                await ManualMigrateEncodeSettings.Migrate(context, logger);
+                            }
+                            catch (Exception ex)
+                            {
+                                /* Swallow */
+                            }
 
                             await unitOfWork.CommitAsync();
-                            logger.LogInformation("Running Migrations - complete");
+                            logger.LogInformation("Running Manual Migrations - complete");
                         }).GetAwaiter()
                         .GetResult();
                 }
-                catch (Exception ex)
-                {
-                    logger.LogCritical(ex, "An error occurred during migration");
-                }
+
+
 
                 await context.Database.MigrateAsync();
 
@@ -117,6 +125,7 @@ public class Program
                 await Seed.SeedDefaultStreams(unitOfWork);
                 await Seed.SeedDefaultSideNavStreams(unitOfWork);
                 await Seed.SeedUserApiKeys(context);
+                await Seed.SeedMetadataSettings(context);
             }
             catch (Exception ex)
             {

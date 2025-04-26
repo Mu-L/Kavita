@@ -1,12 +1,10 @@
-﻿using System.Collections.Generic;
-using System.Data.Common;
+﻿using System.Data.Common;
 using System.IO;
 using System.IO.Abstractions.TestingHelpers;
 using System.Linq;
 using System.Threading.Tasks;
 using API.Data;
 using API.Data.Metadata;
-using API.Entities;
 using API.Entities.Enums;
 using API.Helpers.Builders;
 using API.Services;
@@ -52,17 +50,17 @@ internal class MockReadingItemServiceForCacheService : IReadingItemService
         throw new System.NotImplementedException();
     }
 
-    public ParserInfo Parse(string path, string rootPath, LibraryType type)
+    public ParserInfo Parse(string path, string rootPath, string libraryRoot, LibraryType type)
     {
         throw new System.NotImplementedException();
     }
 
-    public ParserInfo ParseFile(string path, string rootPath, LibraryType type)
+    public ParserInfo ParseFile(string path, string rootPath, string libraryRoot, LibraryType type)
     {
         throw new System.NotImplementedException();
     }
 }
-public class CacheServiceTests
+public class CacheServiceTests: AbstractFsTest
 {
     private readonly ILogger<CacheService> _logger = Substitute.For<ILogger<CacheService>>();
     private readonly IUnitOfWork _unitOfWork;
@@ -70,11 +68,6 @@ public class CacheServiceTests
 
     private readonly DbConnection _connection;
     private readonly DataContext _context;
-
-    private const string CacheDirectory = "C:/kavita/config/cache/";
-    private const string CoverImageDirectory = "C:/kavita/config/covers/";
-    private const string BackupDirectory = "C:/kavita/config/backups/";
-    private const string DataDirectory = "C:/data/";
 
     public CacheServiceTests()
     {
@@ -118,7 +111,7 @@ public class CacheServiceTests
         _context.ServerSetting.Update(setting);
 
         _context.Library.Add(new LibraryBuilder("Manga")
-            .WithFolderPath(new FolderPathBuilder("C:/data/").Build())
+            .WithFolderPath(new FolderPathBuilder(Root + "data/").Build())
             .Build());
         return await _context.SaveChangesAsync() > 0;
     }
@@ -128,19 +121,6 @@ public class CacheServiceTests
         _context.Series.RemoveRange(_context.Series.ToList());
 
         await _context.SaveChangesAsync();
-    }
-
-    private static MockFileSystem CreateFileSystem()
-    {
-        var fileSystem = new MockFileSystem();
-        fileSystem.Directory.SetCurrentDirectory("C:/kavita/");
-        fileSystem.AddDirectory("C:/kavita/config/");
-        fileSystem.AddDirectory(CacheDirectory);
-        fileSystem.AddDirectory(CoverImageDirectory);
-        fileSystem.AddDirectory(BackupDirectory);
-        fileSystem.AddDirectory(DataDirectory);
-
-        return fileSystem;
     }
 
     #endregion
@@ -156,7 +136,9 @@ public class CacheServiceTests
         var ds = new DirectoryService(Substitute.For<ILogger<DirectoryService>>(), filesystem);
         var cleanupService = new CacheService(_logger, _unitOfWork, ds,
             new ReadingItemService(Substitute.For<IArchiveService>(),
-                Substitute.For<IBookService>(), Substitute.For<IImageService>(), ds), Substitute.For<IBookmarkService>());
+                Substitute.For<IBookService>(),
+                Substitute.For<IImageService>(), ds, Substitute.For<ILogger<ReadingItemService>>()),
+            Substitute.For<IBookmarkService>());
 
         await ResetDB();
         var s = new SeriesBuilder("Test").Build();
@@ -231,7 +213,8 @@ public class CacheServiceTests
         var ds = new DirectoryService(Substitute.For<ILogger<DirectoryService>>(), filesystem);
         var cleanupService = new CacheService(_logger, _unitOfWork, ds,
             new ReadingItemService(Substitute.For<IArchiveService>(),
-                Substitute.For<IBookService>(), Substitute.For<IImageService>(), ds), Substitute.For<IBookmarkService>());
+                Substitute.For<IBookService>(), Substitute.For<IImageService>(), ds, Substitute.For<ILogger<ReadingItemService>>()),
+            Substitute.For<IBookmarkService>());
 
         cleanupService.CleanupChapters(new []{1, 3});
         Assert.Empty(ds.GetFiles(CacheDirectory, searchOption:SearchOption.AllDirectories));
@@ -252,14 +235,15 @@ public class CacheServiceTests
         var ds = new DirectoryService(Substitute.For<ILogger<DirectoryService>>(), filesystem);
         var cs = new CacheService(_logger, _unitOfWork, ds,
             new ReadingItemService(Substitute.For<IArchiveService>(),
-                Substitute.For<IBookService>(), Substitute.For<IImageService>(), ds), Substitute.For<IBookmarkService>());
+                Substitute.For<IBookService>(), Substitute.For<IImageService>(), ds, Substitute.For<ILogger<ReadingItemService>>()),
+            Substitute.For<IBookmarkService>());
 
         var c = new ChapterBuilder("1")
             .WithFile(new MangaFileBuilder($"{DataDirectory}1.epub", MangaFormat.Epub).Build())
             .WithFile(new MangaFileBuilder($"{DataDirectory}2.epub", MangaFormat.Epub).Build())
             .Build();
         cs.GetCachedFile(c);
-        Assert.Same($"{DataDirectory}1.epub", cs.GetCachedFile(c));
+        Assert.Equal($"{DataDirectory}1.epub", cs.GetCachedFile(c));
     }
 
     #endregion
@@ -292,7 +276,8 @@ public class CacheServiceTests
         var ds = new DirectoryService(Substitute.For<ILogger<DirectoryService>>(), filesystem);
         var cs = new CacheService(_logger, _unitOfWork, ds,
             new ReadingItemService(Substitute.For<IArchiveService>(),
-                Substitute.For<IBookService>(), Substitute.For<IImageService>(), ds), Substitute.For<IBookmarkService>());
+                Substitute.For<IBookService>(), Substitute.For<IImageService>(), ds, Substitute.For<ILogger<ReadingItemService>>()),
+            Substitute.For<IBookmarkService>());
 
         // Flatten to prepare for how GetFullPath expects
         ds.Flatten($"{CacheDirectory}1/");
@@ -335,7 +320,8 @@ public class CacheServiceTests
         var ds = new DirectoryService(Substitute.For<ILogger<DirectoryService>>(), filesystem);
         var cs = new CacheService(_logger, _unitOfWork, ds,
             new ReadingItemService(Substitute.For<IArchiveService>(),
-                Substitute.For<IBookService>(), Substitute.For<IImageService>(), ds), Substitute.For<IBookmarkService>());
+                Substitute.For<IBookService>(), Substitute.For<IImageService>(), ds, Substitute.For<ILogger<ReadingItemService>>()),
+            Substitute.For<IBookmarkService>());
 
         // Flatten to prepare for how GetFullPath expects
         ds.Flatten($"{CacheDirectory}1/");
@@ -375,7 +361,8 @@ public class CacheServiceTests
         var ds = new DirectoryService(Substitute.For<ILogger<DirectoryService>>(), filesystem);
         var cs = new CacheService(_logger, _unitOfWork, ds,
             new ReadingItemService(Substitute.For<IArchiveService>(),
-                Substitute.For<IBookService>(), Substitute.For<IImageService>(), ds), Substitute.For<IBookmarkService>());
+                Substitute.For<IBookService>(), Substitute.For<IImageService>(), ds, Substitute.For<ILogger<ReadingItemService>>()),
+            Substitute.For<IBookmarkService>());
 
         // Flatten to prepare for how GetFullPath expects
         ds.Flatten($"{CacheDirectory}1/");
@@ -419,7 +406,8 @@ public class CacheServiceTests
         var ds = new DirectoryService(Substitute.For<ILogger<DirectoryService>>(), filesystem);
         var cs = new CacheService(_logger, _unitOfWork, ds,
             new ReadingItemService(Substitute.For<IArchiveService>(),
-                Substitute.For<IBookService>(), Substitute.For<IImageService>(), ds), Substitute.For<IBookmarkService>());
+                Substitute.For<IBookService>(), Substitute.For<IImageService>(), ds, Substitute.For<ILogger<ReadingItemService>>()),
+            Substitute.For<IBookmarkService>());
 
         // Flatten to prepare for how GetFullPath expects
         ds.Flatten($"{CacheDirectory}1/");

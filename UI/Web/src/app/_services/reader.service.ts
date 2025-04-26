@@ -18,7 +18,11 @@ import {takeUntilDestroyed} from "@angular/core/rxjs-interop";
 import {PersonalToC} from "../_models/readers/personal-toc";
 import {SeriesFilterV2} from "../_models/metadata/v2/series-filter-v2";
 import NoSleep from 'nosleep.js';
-import {LibraryType} from "../_models/library/library";
+import {FullProgress} from "../_models/readers/full-progress";
+import {Volume} from "../_models/volume";
+import {UtilityService} from "../shared/_services/utility.service";
+import {translate} from "@jsverse/transloco";
+import {ToastrService} from "ngx-toastr";
 
 
 export const CHAPTER_ID_DOESNT_EXIST = -1;
@@ -30,17 +34,22 @@ export const CHAPTER_ID_NOT_FETCHED = -2;
 export class ReaderService {
 
   private readonly destroyRef = inject(DestroyRef);
+  private readonly utilityService = inject(UtilityService);
+  private readonly router = inject(Router);
+  private readonly location = inject(Location);
+  private readonly accountService = inject(AccountService);
+  private readonly toastr = inject(ToastrService);
+
   baseUrl = environment.apiUrl;
   encodedKey: string = '';
 
   // Override background color for reader and restore it onDestroy
   private originalBodyColor!: string;
 
-  private noSleep = new NoSleep();
 
-  constructor(private httpClient: HttpClient, private router: Router,
-    private location: Location, private accountService: AccountService,
-    @Inject(DOCUMENT) private document: Document) {
+  private noSleep: NoSleep = new NoSleep();
+
+  constructor(private httpClient: HttpClient, @Inject(DOCUMENT) private document: Document) {
       this.accountService.currentUser$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(user => {
         if (user) {
           this.encodedKey = encodeURIComponent(user.apiKey);
@@ -48,17 +57,18 @@ export class ReaderService {
       });
   }
 
+
   enableWakeLock(element?: Element | Document) {
     // Enable wake lock.
     // (must be wrapped in a user input event handler e.g. a mouse or touch handler)
 
     if (!element) element = this.document;
 
-    const enableNoSleepHandler = () => {
+    const enableNoSleepHandler = async () => {
       element!.removeEventListener('click', enableNoSleepHandler, false);
       element!.removeEventListener('touchmove', enableNoSleepHandler, false);
       element!.removeEventListener('mousemove', enableNoSleepHandler, false);
-      this.noSleep!.enable();
+      await this.noSleep.enable();
     };
 
     // Enable wake lock.
@@ -73,15 +83,12 @@ export class ReaderService {
   }
 
 
-  getNavigationArray(libraryId: number, seriesId: number, chapterId: number, format: MangaFormat, libraryType: LibraryType) {
+  getNavigationArray(libraryId: number, seriesId: number, chapterId: number, format: MangaFormat) {
     if (format === undefined) format = MangaFormat.ARCHIVE;
 
     if (format === MangaFormat.EPUB) {
       return ['library', libraryId, 'series', seriesId, 'book', chapterId];
     } else if (format === MangaFormat.PDF) {
-      if (libraryType === LibraryType.Magazine) {
-        return ['library', libraryId, 'series', seriesId, 'manga', chapterId];
-      }
       return ['library', libraryId, 'series', seriesId, 'pdf', chapterId];
     } else {
       return ['library', libraryId, 'series', seriesId, 'manga', chapterId];
@@ -135,8 +142,8 @@ export class ReaderService {
     return this.httpClient.get<ProgressBookmark>(this.baseUrl + 'reader/get-progress?chapterId=' + chapterId);
   }
 
-  getPageUrl(chapterId: number, page: number, extractPdf = false) {
-    return `${this.baseUrl}reader/image?chapterId=${chapterId}&apiKey=${this.encodedKey}&page=${page}&extractPdf=${extractPdf}`;
+  getPageUrl(chapterId: number, page: number) {
+    return `${this.baseUrl}reader/image?chapterId=${chapterId}&apiKey=${this.encodedKey}&page=${page}`;
   }
 
   getThumbnailUrl(chapterId: number, page: number) {
@@ -147,8 +154,8 @@ export class ReaderService {
     return this.baseUrl + 'reader/bookmark-image?seriesId=' + seriesId + '&page=' + page + '&apiKey=' + encodeURIComponent(apiKey);
   }
 
-  getChapterInfo(chapterId: number, includeDimensions = false, extractPdf = false) {
-    return this.httpClient.get<ChapterInfo>(this.baseUrl + `reader/chapter-info?chapterId=${chapterId}&includeDimensions=${includeDimensions}&extractPdf=${extractPdf}`);
+  getChapterInfo(chapterId: number, includeDimensions = false) {
+    return this.httpClient.get<ChapterInfo>(this.baseUrl + 'reader/chapter-info?chapterId=' + chapterId + '&includeDimensions=' + includeDimensions);
   }
 
   getFileDimensions(chapterId: number) {
@@ -157,6 +164,10 @@ export class ReaderService {
 
   saveProgress(libraryId: number, seriesId: number, volumeId: number, chapterId: number, page: number, bookScrollId: string | null = null) {
     return this.httpClient.post(this.baseUrl + 'reader/progress', {libraryId, seriesId, volumeId, chapterId, pageNum: page, bookScrollId});
+  }
+
+  getAllProgressForChapter(chapterId: number) {
+    return this.httpClient.get<Array<FullProgress>>(this.baseUrl + 'reader/all-chapter-progress?chapterId=' + chapterId);
   }
 
   markVolumeRead(seriesId: number, volumeId: number) {
@@ -351,5 +362,31 @@ export class ReaderService {
 
     }
     return '';
+  }
+
+  readVolume(libraryId: number, seriesId: number, volume: Volume, incognitoMode: boolean = false) {
+    if (volume.pagesRead < volume.pages && volume.pagesRead > 0) {
+      // Find the continue point chapter and load it
+      const unreadChapters = volume.chapters.filter(item => item.pagesRead < item.pages);
+      if (unreadChapters.length > 0) {
+        this.readChapter(libraryId, seriesId, unreadChapters[0], incognitoMode);
+        return;
+      }
+      this.readChapter(libraryId, seriesId, volume.chapters[0], incognitoMode);
+      return;
+    }
+
+    // Sort the chapters, then grab first if no reading progress
+    this.readChapter(libraryId, seriesId, [...volume.chapters].sort(this.utilityService.sortChapters)[0], incognitoMode);
+  }
+
+  readChapter(libraryId: number, seriesId: number, chapter: Chapter, incognitoMode: boolean = false) {
+    if (chapter.pages === 0) {
+      this.toastr.error(translate('series-detail.no-pages'));
+      return;
+    }
+
+    this.router.navigate(this.getNavigationArray(libraryId, seriesId, chapter.id, chapter.files[0].format),
+      {queryParams: {incognitoMode}});
   }
 }

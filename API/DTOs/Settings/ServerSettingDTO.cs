@@ -1,7 +1,10 @@
-﻿using API.Entities.Enums;
+﻿using System;
+using System.Text.Json.Serialization;
+using API.Entities.Enums;
 using API.Services;
 
 namespace API.DTOs.Settings;
+#nullable enable
 
 public class ServerSettingDto
 {
@@ -43,6 +46,7 @@ public class ServerSettingDto
     /// <summary>
     /// Represents a unique Id to this Kavita installation. Only used in Stats to identify unique installs.
     /// </summary>
+
     public string InstallId { get; set; } = default!;
     /// <summary>
     /// The format that should be used when saving media for Kavita
@@ -88,6 +92,14 @@ public class ServerSettingDto
     /// SMTP Configuration
     /// </summary>
     public SmtpConfigDto SmtpConfig { get; set; }
+    /// <summary>
+    /// The Date Kavita was first installed
+    /// </summary>
+    public DateTime? FirstInstallDate { get; set; }
+    /// <summary>
+    /// The Version of Kavita on the first run
+    /// </summary>
+    public string? FirstInstallVersion { get; set; }
 
     /// <summary>
     /// Are at least some basics filled in
@@ -96,7 +108,7 @@ public class ServerSettingDto
     public bool IsEmailSetup()
     {
         return !string.IsNullOrEmpty(SmtpConfig.Host)
-               && !string.IsNullOrEmpty(SmtpConfig.UserName)
+               && !string.IsNullOrEmpty(SmtpConfig.SenderAddress)
                && !string.IsNullOrEmpty(HostName);
     }
 
@@ -107,6 +119,6 @@ public class ServerSettingDto
     public bool IsEmailSetupForSendToDevice()
     {
         return !string.IsNullOrEmpty(SmtpConfig.Host)
-               && !string.IsNullOrEmpty(SmtpConfig.UserName);
+               && !string.IsNullOrEmpty(SmtpConfig.SenderAddress);
     }
 }

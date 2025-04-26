@@ -14,7 +14,7 @@ import {takeUntilDestroyed} from "@angular/core/rxjs-interop";
 import {FormControl, FormGroup, ReactiveFormsModule, Validators} from "@angular/forms";
 import {ReaderService} from "../../../_services/reader.service";
 import {ToastrService} from "ngx-toastr";
-import {translate, TranslocoDirective} from "@ngneat/transloco";
+import {translate, TranslocoDirective} from "@jsverse/transloco";
 import {KEY_CODES} from "../../../shared/_services/utility.service";
 
 enum BookLineOverlayMode {
@@ -23,12 +23,11 @@ enum BookLineOverlayMode {
 }
 
 @Component({
-  selector: 'app-book-line-overlay',
-  standalone: true,
+    selector: 'app-book-line-overlay',
     imports: [CommonModule, ReactiveFormsModule, TranslocoDirective],
-  templateUrl: './book-line-overlay.component.html',
-  styleUrls: ['./book-line-overlay.component.scss'],
-  changeDetection: ChangeDetectionStrategy.OnPush
+    templateUrl: './book-line-overlay.component.html',
+    styleUrls: ['./book-line-overlay.component.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class BookLineOverlayComponent implements OnInit {
   @Input({required: true}) libraryId!: number;

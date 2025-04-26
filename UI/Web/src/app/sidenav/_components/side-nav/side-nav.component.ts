@@ -1,72 +1,73 @@
-import {
-  ChangeDetectionStrategy,
-  ChangeDetectorRef,
-  Component,
-  DestroyRef,
-  inject,
-  OnInit
-} from '@angular/core';
-import { NavigationEnd, Router } from '@angular/router';
-import {NgbModal, NgbTooltip} from '@ng-bootstrap/ng-bootstrap';
+import {ChangeDetectionStrategy, ChangeDetectorRef, Component, DestroyRef, inject, OnInit} from '@angular/core';
+import {NavigationEnd, Router} from '@angular/router';
+import {NgbTooltip} from '@ng-bootstrap/ng-bootstrap';
 import {distinctUntilChanged, filter, map, take, tap} from 'rxjs/operators';
-import { ImportCblModalComponent } from 'src/app/reading-list/_modals/import-cbl-modal/import-cbl-modal.component';
-import { ImageService } from 'src/app/_services/image.service';
-import { EVENTS, MessageHubService } from 'src/app/_services/message-hub.service';
-import { Breakpoint, UtilityService } from '../../../shared/_services/utility.service';
-import { Library, LibraryType } from '../../../_models/library/library';
-import { AccountService } from '../../../_services/account.service';
-import { Action, ActionFactoryService, ActionItem } from '../../../_services/action-factory.service';
-import { ActionService } from '../../../_services/action.service';
-import { NavService } from '../../../_services/nav.service';
+import {ImageService} from 'src/app/_services/image.service';
+import {EVENTS, MessageHubService} from 'src/app/_services/message-hub.service';
+import {Breakpoint, UtilityService} from '../../../shared/_services/utility.service';
+import {Library, LibraryType} from '../../../_models/library/library';
+import {AccountService} from '../../../_services/account.service';
+import {Action, ActionFactoryService, ActionItem} from '../../../_services/action-factory.service';
+import {ActionService} from '../../../_services/action.service';
+import {NavService} from '../../../_services/nav.service';
 import {takeUntilDestroyed} from "@angular/core/rxjs-interop";
 import {BehaviorSubject, merge, Observable, of, ReplaySubject, startWith, switchMap} from "rxjs";
-import {CommonModule} from "@angular/common";
+import {AsyncPipe, NgClass} from "@angular/common";
 import {SideNavItemComponent} from "../side-nav-item/side-nav-item.component";
 import {FilterPipe} from "../../../_pipes/filter.pipe";
 import {FormsModule} from "@angular/forms";
-import {TranslocoDirective} from "@ngneat/transloco";
+import {translate, TranslocoDirective} from "@jsverse/transloco";
 import {CardActionablesComponent} from "../../../_single-module/card-actionables/card-actionables.component";
-import {SentenceCasePipe} from "../../../_pipes/sentence-case.pipe";
-import {CustomizeDashboardModalComponent} from "../customize-dashboard-modal/customize-dashboard-modal.component";
 import {SideNavStream} from "../../../_models/sidenav/sidenav-stream";
 import {SideNavStreamType} from "../../../_models/sidenav/sidenav-stream-type.enum";
+import {WikiLink} from "../../../_models/wiki";
+import {SettingsTabId} from "../../preference-nav/preference-nav.component";
+import {LicenseService} from "../../../_services/license.service";
+import {CdkDrag, CdkDragDrop, CdkDropList} from "@angular/cdk/drag-drop";
+import {ToastrService} from "ngx-toastr";
 
 @Component({
   selector: 'app-side-nav',
-  standalone: true,
-  imports: [CommonModule, SideNavItemComponent, CardActionablesComponent, FilterPipe, FormsModule, TranslocoDirective, SentenceCasePipe, NgbTooltip],
+  imports: [SideNavItemComponent, CardActionablesComponent, FilterPipe, FormsModule, TranslocoDirective, NgbTooltip,
+    NgClass, AsyncPipe, CdkDropList, CdkDrag],
   templateUrl: './side-nav.component.html',
   styleUrls: ['./side-nav.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class SideNavComponent implements OnInit {
 
+  protected readonly WikiLink = WikiLink;
+  protected readonly ItemLimit = 10;
+  protected readonly SideNavStreamType = SideNavStreamType;
+  protected readonly SettingsTabId = SettingsTabId;
+  protected readonly Breakpoint = Breakpoint;
+
+  private readonly router = inject(Router);
+  protected readonly utilityService = inject(UtilityService);
+  private readonly messageHub = inject(MessageHubService);
+  private readonly actionService = inject(ActionService);
+  protected readonly navService = inject(NavService);
+  private readonly cdRef = inject(ChangeDetectorRef);
+  private readonly imageService = inject(ImageService);
+  protected readonly accountService = inject(AccountService);
+  protected readonly licenseService = inject(LicenseService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly actionFactoryService = inject(ActionFactoryService);
+  private readonly toastr = inject(ToastrService)
+
 
   cachedData: SideNavStream[] | null = null;
   actions: ActionItem<Library>[] = this.actionFactoryService.getLibraryActions(this.handleAction.bind(this));
-  readingListActions = [{action: Action.Import, title: 'import-cbl', children: [], requiresAdmin: true, callback: this.importCbl.bind(this)}];
-  homeActions = [{action: Action.Edit, title: 'customize', children: [], requiresAdmin: false, callback: this.handleHomeActions.bind(this)}];
+  homeActions: ActionItem<void>[] = this.actionFactoryService.getSideNavHomeActions(this.handleHomeAction.bind(this));
 
   filterQuery: string = '';
   filterLibrary = (stream: SideNavStream) => {
     return stream.name.toLowerCase().indexOf((this.filterQuery || '').toLowerCase()) >= 0;
   }
   showAll: boolean = false;
+  editMode: boolean = false;
   totalSize = 0;
-
-  protected readonly SideNavStreamType = SideNavStreamType;
-  private readonly router = inject(Router);
-  private readonly utilityService = inject(UtilityService);
-  private readonly messageHub = inject(MessageHubService);
-  private readonly actionService = inject(ActionService);
-  public readonly navService = inject(NavService);
-  private readonly cdRef = inject(ChangeDetectorRef);
-  private readonly ngbModal = inject(NgbModal);
-  private readonly imageService = inject(ImageService);
-  public readonly accountService = inject(AccountService);
-
+  isReadOnly = false;
 
   private showAllSubject = new BehaviorSubject<boolean>(false);
   showAll$ = this.showAllSubject.asObservable();
@@ -88,7 +89,7 @@ export class SideNavComponent implements OnInit {
     })
   );
 
-  navStreams$ = merge(
+  navStreams$: Observable<SideNavStream[]> = merge(
     this.showAll$.pipe(
       startWith(false),
       distinctUntilChanged(),
@@ -100,7 +101,7 @@ export class SideNavComponent implements OnInit {
           )
           : this.loadDataOnInit$.pipe(
             tap(d => this.totalSize = d.length),
-            map(d => d.slice(0, 10))
+            map(d => d.slice(0, this.ItemLimit))
           )
       ),
       takeUntilDestroyed(this.destroyRef),
@@ -111,7 +112,7 @@ export class SideNavComponent implements OnInit {
       }),
       switchMap(() => {
         if (this.showAll) return this.loadDataOnInit$;
-        else return this.loadDataOnInit$.pipe(map(d => d.slice(0, 10)))
+        else return this.loadDataOnInit$.pipe(map(d => d.slice(0, this.ItemLimit)))
       }), // Reload data when events occur
       takeUntilDestroyed(this.destroyRef),
     )
@@ -133,8 +134,13 @@ export class SideNavComponent implements OnInit {
 
 
   constructor() {
+    // Ensure that on mobile, we are collapsed by default
+    if (this.utilityService.getActiveBreakpoint() < Breakpoint.Tablet) {
+      this.navService.collapseSideNav(true);
+    }
+
     this.collapseSideNavOnMobileNav$.subscribe(() => {
-        this.navService.toggleSideNav();
+        this.navService.collapseSideNav(false);
         this.cdRef.markForCheck();
     });
   }
@@ -142,6 +148,8 @@ export class SideNavComponent implements OnInit {
   ngOnInit(): void {
     this.accountService.currentUser$.pipe(take(1)).subscribe(user => {
       if (!user) return;
+      this.isReadOnly = this.accountService.hasReadOnlyRole(user!);
+      this.cdRef.markForCheck();
       this.loadDataSubject.next();
     });
   }
@@ -152,7 +160,10 @@ export class SideNavComponent implements OnInit {
         await this.actionService.scanLibrary(library);
         break;
       case(Action.RefreshMetadata):
-        await this.actionService.refreshMetadata(library);
+        await this.actionService.refreshLibraryMetadata(library);
+        break;
+      case(Action.GenerateColorScape):
+        await this.actionService.refreshLibraryMetadata(library, undefined, false);
         break;
       case (Action.AnalyzeFiles):
         await this.actionService.analyzeFiles(library);
@@ -168,17 +179,25 @@ export class SideNavComponent implements OnInit {
     }
   }
 
-  handleHomeActions() {
-    this.ngbModal.open(CustomizeDashboardModalComponent, {size: 'xl', fullscreen: 'md'});
-  }
-
-  importCbl() {
-    this.ngbModal.open(ImportCblModalComponent, {size: 'xl', fullscreen: 'md'});
+  async handleHomeAction(action: ActionItem<void>) {
+    switch (action.action) {
+      case Action.Edit:
+        this.showMore(true);
+        break;
+      default:
+        break;
+    }
   }
 
   performAction(action: ActionItem<Library>, library: Library) {
     if (typeof action.callback === 'function') {
       action.callback(action, library);
+    }
+  }
+
+  performHomeAction(action: ActionItem<void>) {
+    if (typeof action.callback === 'function') {
+      action.callback(action)
     }
   }
 
@@ -188,6 +207,7 @@ export class SideNavComponent implements OnInit {
       case LibraryType.LightNovel:
         return 'fa-book';
       case LibraryType.Comic:
+      case LibraryType.ComicVine:
       case LibraryType.Manga:
         return 'fa-book-open';
       case LibraryType.Images:
@@ -207,14 +227,37 @@ export class SideNavComponent implements OnInit {
     this.navService.toggleSideNav();
   }
 
-  showMore() {
+  showMore(edit: boolean = false) {
     this.showAllSubject.next(true);
+    this.editMode = edit;
+    this.cdRef.markForCheck();
   }
 
   showLess() {
     this.filterQuery = '';
-    this.cdRef.markForCheck();
     this.showAllSubject.next(false);
+    this.editMode = false;
+    this.cdRef.markForCheck();
   }
 
+  async reorderDrop($event: CdkDragDrop<any, any, SideNavStream>) {
+    // Don't allow dropping on non SideNav items
+    const fixedSideNavItems = 3;
+    if ($event.currentIndex < fixedSideNavItems) {
+      return;
+    }
+
+    const stream = $event.item.data;
+    // Offset the home, back, and customize button
+    this.navService.updateSideNavStreamPosition(stream.name, stream.id, stream.order, $event.currentIndex - 3).subscribe({
+      next: () => {
+        this.showAllSubject.next(this.showAll);
+        this.cdRef.markForCheck();
+      },
+      error: err => {
+        console.error(err);
+        this.toastr.error(translate('errors.generic'));
+      }
+    });
+  }
 }

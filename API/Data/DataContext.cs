@@ -1,17 +1,24 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using API.DTOs.KavitaPlus.Metadata;
 using API.Entities;
 using API.Entities.Enums;
 using API.Entities.Enums.UserPreferences;
+using API.Entities.History;
 using API.Entities.Interfaces;
 using API.Entities.Metadata;
+using API.Entities.MetadataMatching;
+using API.Entities.Person;
 using API.Entities.Scrobble;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 
 namespace API.Data;
 
@@ -36,6 +43,7 @@ public sealed class DataContext : IdentityDbContext<AppUser, AppRole, int,
     public DbSet<ServerSetting> ServerSetting { get; set; } = null!;
     public DbSet<AppUserPreferences> AppUserPreferences { get; set; } = null!;
     public DbSet<SeriesMetadata> SeriesMetadata { get; set; } = null!;
+    [Obsolete]
     public DbSet<CollectionTag> CollectionTag { get; set; } = null!;
     public DbSet<AppUserBookmark> AppUserBookmark { get; set; } = null!;
     public DbSet<ReadingList> ReadingList { get; set; } = null!;
@@ -64,7 +72,12 @@ public sealed class DataContext : IdentityDbContext<AppUser, AppRole, int,
     public DbSet<ExternalRecommendation> ExternalRecommendation { get; set; } = null!;
     public DbSet<ManualMigrationHistory> ManualMigrationHistory { get; set; } = null!;
     public DbSet<SeriesBlacklist> SeriesBlacklist { get; set; } = null!;
-
+    public DbSet<AppUserCollection> AppUserCollection { get; set; } = null!;
+    public DbSet<ChapterPeople> ChapterPeople { get; set; } = null!;
+    public DbSet<SeriesMetadataPeople> SeriesMetadataPeople { get; set; } = null!;
+    public DbSet<EmailHistory> EmailHistory { get; set; } = null!;
+    public DbSet<MetadataSettings> MetadataSettings { get; set; } = null!;
+    public DbSet<MetadataFieldMapping> MetadataFieldMapping { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -114,9 +127,21 @@ public sealed class DataContext : IdentityDbContext<AppUser, AppRole, int,
             .Property(b => b.Locale)
             .IsRequired(true)
             .HasDefaultValue("en");
+        builder.Entity<AppUserPreferences>()
+            .Property(b => b.AniListScrobblingEnabled)
+            .HasDefaultValue(true);
+        builder.Entity<AppUserPreferences>()
+            .Property(b => b.WantToReadSync)
+            .HasDefaultValue(true);
+        builder.Entity<AppUserPreferences>()
+            .Property(b => b.AllowAutomaticWebtoonReaderDetection)
+            .HasDefaultValue(true);
 
         builder.Entity<Library>()
             .Property(b => b.AllowScrobbling)
+            .HasDefaultValue(true);
+        builder.Entity<Library>()
+            .Property(b => b.AllowMetadataMatching)
             .HasDefaultValue(true);
 
         builder.Entity<Chapter>()
@@ -149,6 +174,85 @@ public sealed class DataContext : IdentityDbContext<AppUser, AppRole, int,
             .WithOne(s => s.ExternalSeriesMetadata)
             .HasForeignKey<ExternalSeriesMetadata>(em => em.SeriesId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Entity<AppUserCollection>()
+            .Property(b => b.AgeRating)
+            .HasDefaultValue(AgeRating.Unknown);
+
+        // Configure the many-to-many relationship for Movie and Person
+        builder.Entity<ChapterPeople>()
+            .HasKey(cp => new { cp.ChapterId, cp.PersonId, cp.Role });
+
+        builder.Entity<ChapterPeople>()
+            .HasOne(cp => cp.Chapter)
+            .WithMany(c => c.People)
+            .HasForeignKey(cp => cp.ChapterId);
+
+        builder.Entity<ChapterPeople>()
+            .HasOne(cp => cp.Person)
+            .WithMany(p => p.ChapterPeople)
+            .HasForeignKey(cp => cp.PersonId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+
+        builder.Entity<SeriesMetadataPeople>()
+            .HasKey(smp => new { smp.SeriesMetadataId, smp.PersonId, smp.Role });
+
+        builder.Entity<SeriesMetadataPeople>()
+            .HasOne(smp => smp.SeriesMetadata)
+            .WithMany(sm => sm.People)
+            .HasForeignKey(smp => smp.SeriesMetadataId);
+
+        builder.Entity<SeriesMetadataPeople>()
+            .HasOne(smp => smp.Person)
+            .WithMany(p => p.SeriesMetadataPeople)
+            .HasForeignKey(smp => smp.PersonId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Entity<SeriesMetadataPeople>()
+            .Property(b => b.OrderWeight)
+            .HasDefaultValue(0);
+
+        builder.Entity<MetadataSettings>()
+            .Property(x => x.AgeRatingMappings)
+            .HasConversion(
+                v => JsonSerializer.Serialize(v, JsonSerializerOptions.Default),
+                v => JsonSerializer.Deserialize<Dictionary<string, AgeRating>>(v, JsonSerializerOptions.Default) ?? new Dictionary<string, AgeRating>()
+            );
+
+        // Ensure blacklist is stored as a JSON array
+        builder.Entity<MetadataSettings>()
+            .Property(x => x.Blacklist)
+            .HasConversion(
+                v => JsonSerializer.Serialize(v, JsonSerializerOptions.Default),
+                v => JsonSerializer.Deserialize<List<string>>(v, JsonSerializerOptions.Default) ?? new List<string>()
+            );
+        builder.Entity<MetadataSettings>()
+            .Property(x => x.Whitelist)
+            .HasConversion(
+                v => JsonSerializer.Serialize(v, JsonSerializerOptions.Default),
+                v => JsonSerializer.Deserialize<List<string>>(v, JsonSerializerOptions.Default) ?? new List<string>()
+            );
+        builder.Entity<MetadataSettings>()
+            .Property(x => x.Overrides)
+            .HasConversion(
+                v => JsonSerializer.Serialize(v, JsonSerializerOptions.Default),
+                v => JsonSerializer.Deserialize<List<MetadataSettingField>>(v, JsonSerializerOptions.Default) ?? new List<MetadataSettingField>()
+            );
+
+        // Configure one-to-many relationship
+        builder.Entity<MetadataSettings>()
+            .HasMany(x => x.FieldMappings)
+            .WithOne(x => x.MetadataSettings)
+            .HasForeignKey(x => x.MetadataSettingsId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Entity<MetadataSettings>()
+            .Property(b => b.Enabled)
+            .HasDefaultValue(true);
+        builder.Entity<MetadataSettings>()
+            .Property(b => b.EnableCoverImage)
+            .HasDefaultValue(true);
     }
 
     #nullable enable
@@ -156,10 +260,15 @@ public sealed class DataContext : IdentityDbContext<AppUser, AppRole, int,
     {
         if (e.FromQuery || e.Entry.State != EntityState.Added || e.Entry.Entity is not IEntityDate entity) return;
 
-        entity.Created = DateTime.Now;
         entity.LastModified = DateTime.Now;
-        entity.CreatedUtc = DateTime.UtcNow;
         entity.LastModifiedUtc = DateTime.UtcNow;
+
+        // This allows for mocking
+        if (entity.Created == DateTime.MinValue)
+        {
+            entity.Created = DateTime.Now;
+            entity.CreatedUtc = DateTime.UtcNow;
+        }
     }
 
     private static void OnEntityStateChanged(object? sender, EntityStateChangedEventArgs e)

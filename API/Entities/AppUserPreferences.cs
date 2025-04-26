@@ -7,6 +7,9 @@ namespace API.Entities;
 public class AppUserPreferences
 {
     public int Id { get; set; }
+
+    #region MangaReader
+
     /// <summary>
     /// Manga Reader Option: What direction should the next/prev page buttons go
     /// </summary>
@@ -52,6 +55,15 @@ public class AppUserPreferences
     /// </summary>
     public bool SwipeToPaginate { get; set; }
     /// <summary>
+    /// Manga Reader Option: Allow Automatic Webtoon detection
+    /// </summary>
+    public bool AllowAutomaticWebtoonReaderDetection { get; set; }
+
+    #endregion
+
+    #region EpubReader
+
+    /// <summary>
     /// Book Reader Option: Override extra Margin
     /// </summary>
     public int BookReaderMargin { get; set; } = 15;
@@ -75,16 +87,10 @@ public class AppUserPreferences
     /// Book Reader Option: What direction should the next/prev page buttons go
     /// </summary>
     public ReadingDirection BookReaderReadingDirection { get; set; } = ReadingDirection.LeftToRight;
-
     /// <summary>
     /// Book Reader Option: Defines the writing styles vertical/horizontal
     /// </summary>
     public WritingStyle BookReaderWritingStyle { get; set; } = WritingStyle.Horizontal;
-    /// <summary>
-    /// UI Site Global Setting: The UI theme the user should use.
-    /// </summary>
-    /// <remarks>Should default to Dark</remarks>
-    public required SiteTheme Theme { get; set; } = Seed.DefaultThemes[0];
     /// <summary>
     /// Book Reader Option: The color theme to decorate the book contents
     /// </summary>
@@ -101,6 +107,33 @@ public class AppUserPreferences
     /// </summary>
     /// <remarks>Defaults to false</remarks>
     public bool BookReaderImmersiveMode { get; set; } = false;
+    #endregion
+
+    #region PdfReader
+
+    /// <summary>
+    /// PDF Reader: Theme of the Reader
+    /// </summary>
+    public PdfTheme PdfTheme { get; set; } = PdfTheme.Dark;
+    /// <summary>
+    /// PDF Reader: Scroll mode of the reader
+    /// </summary>
+    public PdfScrollMode PdfScrollMode { get; set; } = PdfScrollMode.Vertical;
+    /// <summary>
+    /// PDF Reader: Spread Mode of the reader
+    /// </summary>
+    public PdfSpreadMode PdfSpreadMode { get; set; } = PdfSpreadMode.None;
+
+
+    #endregion
+
+    #region Global
+
+    /// <summary>
+    /// UI Site Global Setting: The UI theme the user should use.
+    /// </summary>
+    /// <remarks>Should default to Dark</remarks>
+    public required SiteTheme Theme { get; set; } = Seed.DefaultThemes[0];
     /// <summary>
     /// Global Site Option: If the UI should layout items as Cards or List items
     /// </summary>
@@ -131,6 +164,18 @@ public class AppUserPreferences
     /// UI Site Global Setting: The language locale that should be used for the user
     /// </summary>
     public string Locale { get; set; }
+    #endregion
+
+    #region KavitaPlus
+    /// <summary>
+    /// Should this account have Scrobbling enabled for AniList
+    /// </summary>
+    public bool AniListScrobblingEnabled { get; set; }
+    /// <summary>
+    /// Should this account have Want to Read Sync enabled
+    /// </summary>
+    public bool WantToReadSync { get; set; }
+    #endregion
 
     public AppUser AppUser { get; set; } = null!;
     public int AppUserId { get; set; }

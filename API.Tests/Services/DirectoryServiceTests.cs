@@ -1,20 +1,30 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.IO.Abstractions.TestingHelpers;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 using API.Services;
+using Kavita.Common.Helpers;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace API.Tests.Services;
 
-public class DirectoryServiceTests
+public class DirectoryServiceTests: AbstractFsTest
 {
     private readonly ILogger<DirectoryService> _logger = Substitute.For<ILogger<DirectoryService>>();
+    private readonly ITestOutputHelper _testOutputHelper;
+
+    public DirectoryServiceTests(ITestOutputHelper testOutputHelper)
+    {
+        _testOutputHelper = testOutputHelper;
+    }
 
 
     #region TraverseTreeParallelForEach
@@ -372,9 +382,16 @@ public class DirectoryServiceTests
     #endregion
 
     #region IsDriveMounted
+    // The root directory (/) is always mounted on non windows
     [Fact]
     public void IsDriveMounted_DriveIsNotMounted()
     {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            _testOutputHelper.WriteLine("Skipping test on non Windows platform");
+            return;
+        }
+
         const string testDirectory = "c:/manga/";
         var fileSystem = new MockFileSystem();
         fileSystem.AddFile($"{testDirectory}data-0.txt", new MockFileData("abc"));
@@ -386,6 +403,12 @@ public class DirectoryServiceTests
     [Fact]
     public void IsDriveMounted_DriveIsMounted()
     {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            _testOutputHelper.WriteLine("Skipping test on non Windows platform");
+            return;
+        }
+
         const string testDirectory = "c:/manga/";
         var fileSystem = new MockFileSystem();
         fileSystem.AddFile($"{testDirectory}data-0.txt", new MockFileData("abc"));
@@ -721,6 +744,54 @@ public class DirectoryServiceTests
 
     #endregion
 
+    #region FindLowestDirectoriesFromFiles
+
+    [Theory]
+    [InlineData(new [] {"C:/Manga/"},
+        new [] {"C:/Manga/Love Hina/Vol. 01.cbz"},
+        "C:/Manga/Love Hina")]
+    [InlineData(new [] {"C:/Manga/"},
+        new [] {"C:/Manga/Romance/Love Hina/Vol. 01.cbz"},
+        "C:/Manga/Romance/Love Hina")]
+    [InlineData(new [] {"C:/Manga/Dir 1/", "c://Manga/Dir 2/"},
+        new [] {"C:/Manga/Dir 1/Love Hina/Vol. 01.cbz"},
+        "C:/Manga/Dir 1/Love Hina")]
+    [InlineData(new [] {"C:/Manga/Dir 1/", "c://Manga/"},
+        new [] {"D:/Manga/Love Hina/Vol. 01.cbz", "D:/Manga/Vol. 01.cbz"},
+        null)]
+    [InlineData(new [] {@"C:\mount\drive\Library\Test Library\Comics\"},
+        new [] {@"C:\mount\drive\Library\Test Library\Comics\Bruce Lee (1994)\Bruce Lee #001 (1994).cbz"},
+        @"C:/mount/drive/Library/Test Library/Comics/Bruce Lee (1994)")]
+    [InlineData(new [] {"C:/Manga/"},
+        new [] {"C:/Manga/Love Hina/Vol. 01.cbz", "C:/Manga/Love Hina/Specials/Sp01.cbz"},
+        "C:/Manga/Love Hina")]
+    [InlineData(new [] {"/manga"},
+        new [] {"/manga/Love Hina/Vol. 01.cbz", "/manga/Love Hina/Specials/Sp01.cbz"},
+        "/manga/Love Hina")]
+    [InlineData(new [] {"/manga"},
+        new [] {"/manga/Love Hina/Hina/Vol. 01.cbz", "/manga/Love Hina/Specials/Sp01.cbz"},
+        "/manga/Love Hina")]
+    [InlineData(new [] {"/manga"},
+        new [] {"/manga/Dress Up Darling/Dress Up Darling Ch 01.cbz", "/manga/Dress Up Darling/Dress Up Darling/Dress Up Darling Vol 01.cbz"},
+        "/manga/Dress Up Darling")]
+    public void FindLowestDirectoriesFromFilesTest(string[] rootDirectories, string[] files, string expectedDirectory)
+    {
+        var fileSystem = new MockFileSystem();
+        foreach (var directory in rootDirectories)
+        {
+            fileSystem.AddDirectory(directory);
+        }
+        foreach (var f in files)
+        {
+            fileSystem.AddFile(f, new MockFileData(""));
+        }
+        var ds = new DirectoryService(Substitute.For<ILogger<DirectoryService>>(), fileSystem);
+
+        var actual = ds.FindLowestDirectoriesFromFiles(rootDirectories, files);
+        Assert.Equal(expectedDirectory, actual);
+    }
+
+    #endregion
     #region GetFoldersTillRoot
 
     [Theory]
@@ -851,12 +922,14 @@ public class DirectoryServiceTests
     #region GetHumanReadableBytes
 
     [Theory]
-    [InlineData(1200, "1.17 KB")]
-    [InlineData(1, "1 B")]
-    [InlineData(10000000, "9.54 MB")]
-    [InlineData(10000000000, "9.31 GB")]
-    public void GetHumanReadableBytesTest(long bytes, string expected)
+    [InlineData(1200, 1.17, " KB")]
+    [InlineData(1, 1, " B")]
+    [InlineData(10000000, 9.54, " MB")]
+    [InlineData(10000000000, 9.31, " GB")]
+    public void GetHumanReadableBytesTest(long bytes, float number, string suffix)
     {
+        // GetHumanReadableBytes is user facing, should be in CultureInfo.CurrentCulture
+        var expected = number.ToString(CultureInfo.CurrentCulture) + suffix;
         Assert.Equal(expected, DirectoryService.GetHumanReadableBytes(bytes));
     }
     #endregion
@@ -878,8 +951,9 @@ public class DirectoryServiceTests
 
         var ds = new DirectoryService(Substitute.For<ILogger<DirectoryService>>(), fileSystem);
 
-
-        var allFiles = ds.ScanFiles("C:/Data/", API.Services.Tasks.Scanner.Parser.Parser.SupportedExtensions);
+        var globMatcher = new GlobMatcher();
+        globMatcher.AddExclude("*.*");
+        var allFiles = ds.ScanFiles("C:/Data/", API.Services.Tasks.Scanner.Parser.Parser.SupportedExtensions, globMatcher);
 
         Assert.Empty(allFiles);
 
@@ -903,7 +977,9 @@ public class DirectoryServiceTests
 
         var ds = new DirectoryService(Substitute.For<ILogger<DirectoryService>>(), fileSystem);
 
-        var allFiles = ds.ScanFiles("C:/Data/", API.Services.Tasks.Scanner.Parser.Parser.SupportedExtensions);
+        var globMatcher = new GlobMatcher();
+        globMatcher.AddExclude("**/Accel World/*");
+        var allFiles = ds.ScanFiles("C:/Data/", API.Services.Tasks.Scanner.Parser.Parser.SupportedExtensions, globMatcher);
 
         Assert.Single(allFiles); // Ignore files are not counted in files, only valid extensions
 
@@ -932,7 +1008,10 @@ public class DirectoryServiceTests
 
         var ds = new DirectoryService(Substitute.For<ILogger<DirectoryService>>(), fileSystem);
 
-        var allFiles = ds.ScanFiles("C:/Data/", API.Services.Tasks.Scanner.Parser.Parser.SupportedExtensions);
+        var globMatcher = new GlobMatcher();
+        globMatcher.AddExclude("**/Accel World/*");
+        globMatcher.AddExclude("**/ArtBooks/*");
+        var allFiles = ds.ScanFiles("C:/Data/", API.Services.Tasks.Scanner.Parser.Parser.SupportedExtensions, globMatcher);
 
         Assert.Equal(2, allFiles.Count); // Ignore files are not counted in files, only valid extensions
 
@@ -986,11 +1065,14 @@ public class DirectoryServiceTests
     #region GetParentDirectory
 
     [Theory]
-    [InlineData(@"C:/file.txt", "C:/")]
-    [InlineData(@"C:/folder/file.txt", "C:/folder")]
-    [InlineData(@"C:/folder/subfolder/file.txt", "C:/folder/subfolder")]
+    [InlineData(@"file.txt", "")]
+    [InlineData(@"folder/file.txt", "folder")]
+    [InlineData(@"folder/subfolder/file.txt", "folder/subfolder")]
     public void GetParentDirectoryName_ShouldFindParentOfFiles(string path, string expected)
     {
+        path = Root + path;
+        expected = Root + expected;
+
         var fileSystem = new MockFileSystem(new Dictionary<string, MockFileData>
         {
             { path, new MockFileData(string.Empty)}
@@ -1000,11 +1082,14 @@ public class DirectoryServiceTests
         Assert.Equal(expected, ds.GetParentDirectoryName(path));
     }
     [Theory]
-    [InlineData(@"C:/folder", "C:/")]
-    [InlineData(@"C:/folder/subfolder", "C:/folder")]
-    [InlineData(@"C:/folder/subfolder/another", "C:/folder/subfolder")]
+    [InlineData(@"folder", "")]
+    [InlineData(@"folder/subfolder", "folder")]
+    [InlineData(@"folder/subfolder/another", "folder/subfolder")]
     public void GetParentDirectoryName_ShouldFindParentOfDirectories(string path, string expected)
     {
+        path = Root + path;
+        expected = Root + expected;
+
         var fileSystem = new MockFileSystem();
         fileSystem.AddDirectory(path);
 

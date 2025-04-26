@@ -2,6 +2,7 @@
 using API.DTOs.Recommendation;
 
 namespace API.DTOs.SeriesDetail;
+#nullable enable
 
 /// <summary>
 /// All the data from Kavita+ for Series Detail
@@ -12,4 +13,5 @@ public class SeriesDetailPlusDto
     public RecommendationDto? Recommendations { get; set; }
     public IEnumerable<UserReviewDto> Reviews { get; set; }
     public IEnumerable<RatingDto>? Ratings { get; set; }
+    public ExternalSeriesDetailDto? Series { get; set; }
 }

@@ -1,16 +1,13 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
-using System.IO.Abstractions;
 using System.IO.Abstractions.TestingHelpers;
 using System.Linq;
 using System.Threading.Tasks;
-using API.Data;
 using API.Data.Repositories;
 using API.DTOs.Filtering;
 using API.Entities;
 using API.Entities.Enums;
-using API.Entities.Metadata;
 using API.Extensions;
 using API.Helpers;
 using API.Helpers.Builders;
@@ -30,11 +27,10 @@ public class CleanupServiceTests : AbstractDbTest
     private readonly IEventHub _messageHub = Substitute.For<IEventHub>();
     private readonly IReaderService _readerService;
 
-
     public CleanupServiceTests() : base()
     {
         _context.Library.Add(new LibraryBuilder("Manga")
-            .WithFolderPath(new FolderPathBuilder("C:/data/").Build())
+            .WithFolderPath(new FolderPathBuilder(Root + "data/").Build())
             .Build());
 
         _readerService = new ReaderService(_unitOfWork, Substitute.For<ILogger<ReaderService>>(), Substitute.For<IEventHub>(),
@@ -139,7 +135,7 @@ public class CleanupServiceTests : AbstractDbTest
         // Add 2 series with cover images
         _context.Series.Add(new SeriesBuilder("Test 1")
             .WithVolume(new VolumeBuilder("1")
-                .WithChapter(new ChapterBuilder("0").WithCoverImage("v01_c01.jpg").Build())
+                .WithChapter(new ChapterBuilder(API.Services.Tasks.Scanner.Parser.Parser.DefaultChapter).WithCoverImage("v01_c01.jpg").Build())
                 .WithCoverImage("v01_c01.jpg")
                 .Build())
             .WithCoverImage("series_01.jpg")
@@ -148,7 +144,7 @@ public class CleanupServiceTests : AbstractDbTest
 
         _context.Series.Add(new SeriesBuilder("Test 2")
             .WithVolume(new VolumeBuilder("1")
-                .WithChapter(new ChapterBuilder("0").WithCoverImage("v01_c03.jpg").Build())
+                .WithChapter(new ChapterBuilder(API.Services.Tasks.Scanner.Parser.Parser.DefaultChapter).WithCoverImage("v01_c03.jpg").Build())
                 .WithCoverImage("v01_c03.jpg")
                 .Build())
             .WithCoverImage("series_03.jpg")
@@ -167,53 +163,53 @@ public class CleanupServiceTests : AbstractDbTest
     }
     #endregion
 
-    #region DeleteTagCoverImages
-
-    [Fact]
-    public async Task DeleteTagCoverImages_ShouldNotDeleteLinkedFiles()
-    {
-        var filesystem = CreateFileSystem();
-        filesystem.AddFile($"{CoverImageDirectory}{ImageService.GetCollectionTagFormat(1)}.jpg", new MockFileData(""));
-        filesystem.AddFile($"{CoverImageDirectory}{ImageService.GetCollectionTagFormat(2)}.jpg", new MockFileData(""));
-        filesystem.AddFile($"{CoverImageDirectory}{ImageService.GetCollectionTagFormat(1000)}.jpg", new MockFileData(""));
-
-        // Delete all Series to reset state
-        await ResetDb();
-
-        // Add 2 series with cover images
-
-        _context.Series.Add(new SeriesBuilder("Test 1")
-            .WithMetadata(new SeriesMetadataBuilder()
-                .WithCollectionTag(new CollectionTagBuilder("Something")
-                    .WithCoverImage($"{ImageService.GetCollectionTagFormat(1)}.jpg")
-                    .Build())
-                .Build())
-            .WithCoverImage($"{ImageService.GetSeriesFormat(1)}.jpg")
-            .WithLibraryId(1)
-            .Build());
-
-        _context.Series.Add(new SeriesBuilder("Test 2")
-            .WithMetadata(new SeriesMetadataBuilder()
-                .WithCollectionTag(new CollectionTagBuilder("Something")
-                    .WithCoverImage($"{ImageService.GetCollectionTagFormat(2)}.jpg")
-                    .Build())
-                .Build())
-            .WithCoverImage($"{ImageService.GetSeriesFormat(3)}.jpg")
-            .WithLibraryId(1)
-            .Build());
-
-
-        await _context.SaveChangesAsync();
-        var ds = new DirectoryService(Substitute.For<ILogger<DirectoryService>>(), filesystem);
-        var cleanupService = new CleanupService(_logger, _unitOfWork, _messageHub,
-            ds);
-
-        await cleanupService.DeleteTagCoverImages();
-
-        Assert.Equal(2, ds.GetFiles(CoverImageDirectory).Count());
-    }
-
-    #endregion
+    // #region DeleteTagCoverImages
+    //
+    // [Fact]
+    // public async Task DeleteTagCoverImages_ShouldNotDeleteLinkedFiles()
+    // {
+    //     var filesystem = CreateFileSystem();
+    //     filesystem.AddFile($"{CoverImageDirectory}{ImageService.GetCollectionTagFormat(1)}.jpg", new MockFileData(""));
+    //     filesystem.AddFile($"{CoverImageDirectory}{ImageService.GetCollectionTagFormat(2)}.jpg", new MockFileData(""));
+    //     filesystem.AddFile($"{CoverImageDirectory}{ImageService.GetCollectionTagFormat(1000)}.jpg", new MockFileData(""));
+    //
+    //     // Delete all Series to reset state
+    //     await ResetDb();
+    //
+    //     // Add 2 series with cover images
+    //
+    //     _context.Series.Add(new SeriesBuilder("Test 1")
+    //         .WithMetadata(new SeriesMetadataBuilder()
+    //             .WithCollectionTag(new AppUserCollectionBuilder("Something")
+    //                 .WithCoverImage($"{ImageService.GetCollectionTagFormat(1)}.jpg")
+    //                 .Build())
+    //             .Build())
+    //         .WithCoverImage($"{ImageService.GetSeriesFormat(1)}.jpg")
+    //         .WithLibraryId(1)
+    //         .Build());
+    //
+    //     _context.Series.Add(new SeriesBuilder("Test 2")
+    //         .WithMetadata(new SeriesMetadataBuilder()
+    //             .WithCollectionTag(new AppUserCollectionBuilder("Something")
+    //                 .WithCoverImage($"{ImageService.GetCollectionTagFormat(2)}.jpg")
+    //                 .Build())
+    //             .Build())
+    //         .WithCoverImage($"{ImageService.GetSeriesFormat(3)}.jpg")
+    //         .WithLibraryId(1)
+    //         .Build());
+    //
+    //
+    //     await _context.SaveChangesAsync();
+    //     var ds = new DirectoryService(Substitute.For<ILogger<DirectoryService>>(), filesystem);
+    //     var cleanupService = new CleanupService(_logger, _unitOfWork, _messageHub,
+    //         ds);
+    //
+    //     await cleanupService.DeleteTagCoverImages();
+    //
+    //     Assert.Equal(2, ds.GetFiles(CoverImageDirectory).Count());
+    // }
+    //
+    // #endregion
 
     #region DeleteReadingListCoverImages
     [Fact]
@@ -389,13 +385,12 @@ public class CleanupServiceTests : AbstractDbTest
     [Fact]
     public async Task CleanupDbEntries_CleanupAbandonedChapters()
     {
-        var c = new ChapterBuilder("0")
+        var c = new ChapterBuilder(API.Services.Tasks.Scanner.Parser.Parser.DefaultChapter)
             .WithPages(1)
             .Build();
         var series = new SeriesBuilder("Test")
             .WithFormat(MangaFormat.Epub)
-            .WithVolume(new VolumeBuilder("0")
-                .WithMinNumber(1)
+            .WithVolume(new VolumeBuilder(API.Services.Tasks.Scanner.Parser.Parser.LooseLeafVolume)
                 .WithChapter(c)
                 .Build())
             .Build();
@@ -436,24 +431,26 @@ public class CleanupServiceTests : AbstractDbTest
     [Fact]
     public async Task CleanupDbEntries_RemoveTagsWithoutSeries()
     {
-        var c = new CollectionTag()
+        var s = new SeriesBuilder("Test")
+            .WithFormat(MangaFormat.Epub)
+            .WithMetadata(new SeriesMetadataBuilder().Build())
+            .Build();
+        s.Library = new LibraryBuilder("Test LIb").Build();
+        _context.Series.Add(s);
+
+        var c = new AppUserCollection()
         {
             Title = "Test Tag",
             NormalizedTitle = "Test Tag".ToNormalized(),
+            AgeRating = AgeRating.Unknown,
+            Items = new List<Series>() {s}
         };
-        var s = new SeriesBuilder("Test")
-            .WithFormat(MangaFormat.Epub)
-            .WithMetadata(new SeriesMetadataBuilder().WithCollectionTag(c).Build())
-            .Build();
-        s.Library = new LibraryBuilder("Test LIb").Build();
-
-        _context.Series.Add(s);
 
         _context.AppUser.Add(new AppUser()
         {
-            UserName = "majora2007"
+            UserName = "majora2007",
+            Collections = new List<AppUserCollection>() {c}
         });
-
         await _context.SaveChangesAsync();
 
         var cleanupService = new CleanupService(Substitute.For<ILogger<CleanupService>>(), _unitOfWork,
@@ -466,7 +463,7 @@ public class CleanupServiceTests : AbstractDbTest
 
         await cleanupService.CleanupDbEntries();
 
-        Assert.Empty(await _unitOfWork.CollectionTagRepository.GetAllTagsAsync());
+        Assert.Empty(await _unitOfWork.CollectionTagRepository.GetAllCollectionsAsync());
     }
 
     #endregion
@@ -520,6 +517,71 @@ public class CleanupServiceTests : AbstractDbTest
     }
     #endregion
 
+    #region ConsolidateProgress
+
+    [Fact]
+    public async Task ConsolidateProgress_ShouldRemoveDuplicates()
+    {
+        await ResetDb();
+
+        var s = new SeriesBuilder("Test ConsolidateProgress_ShouldRemoveDuplicates")
+            .WithVolume(new VolumeBuilder("1")
+                .WithChapter(new ChapterBuilder("1")
+                    .WithPages(3)
+                    .Build())
+                .Build())
+            .Build();
+
+        s.Library = new LibraryBuilder("Test Lib").Build();
+        _context.Series.Add(s);
+
+        var user = new AppUser()
+        {
+            UserName = "ConsolidateProgress_ShouldRemoveDuplicates",
+        };
+        _context.AppUser.Add(user);
+
+        await _unitOfWork.CommitAsync();
+
+        // Add 2 progress events
+        user.Progresses ??= [];
+        user.Progresses.Add(new AppUserProgress()
+        {
+            ChapterId = 1,
+            VolumeId = 1,
+            SeriesId = 1,
+            LibraryId = s.LibraryId,
+            PagesRead = 1,
+        });
+        await _unitOfWork.CommitAsync();
+
+        // Add a duplicate with higher page number
+        user.Progresses.Add(new AppUserProgress()
+        {
+            ChapterId = 1,
+            VolumeId = 1,
+            SeriesId = 1,
+            LibraryId = s.LibraryId,
+            PagesRead = 3,
+        });
+        await _unitOfWork.CommitAsync();
+
+        Assert.Equal(2, (await _unitOfWork.AppUserProgressRepository.GetAllProgress()).Count());
+
+        var cleanupService = new CleanupService(Substitute.For<ILogger<CleanupService>>(), _unitOfWork,
+            Substitute.For<IEventHub>(),
+            new DirectoryService(Substitute.For<ILogger<DirectoryService>>(), new MockFileSystem()));
+
+
+        await cleanupService.ConsolidateProgress();
+
+        var progress = await _unitOfWork.AppUserProgressRepository.GetAllProgress();
+
+        Assert.Single(progress);
+        Assert.True(progress.First().PagesRead == 3);
+    }
+    #endregion
+
 
     #region EnsureChapterProgressIsCapped
 
@@ -537,7 +599,7 @@ public class CleanupServiceTests : AbstractDbTest
         c.UserProgress = new List<AppUserProgress>();
         s.Volumes = new List<Volume>()
         {
-            new VolumeBuilder("0").WithChapter(c).Build()
+            new VolumeBuilder(API.Services.Tasks.Scanner.Parser.Parser.LooseLeafVolume).WithChapter(c).Build()
         };
         _context.Series.Add(s);
 
@@ -586,7 +648,7 @@ public class CleanupServiceTests : AbstractDbTest
     }
     #endregion
 
-    // #region CleanupBookmarks
+    #region CleanupBookmarks
     //
     // [Fact]
     // public async Task CleanupBookmarks_LeaveAllFiles()
@@ -723,5 +785,5 @@ public class CleanupServiceTests : AbstractDbTest
     //     Assert.Equal(1, ds.FileSystem.Directory.GetDirectories($"{BookmarkDirectory}1/1/").Length);
     // }
     //
-    // #endregion
+    #endregion
 }

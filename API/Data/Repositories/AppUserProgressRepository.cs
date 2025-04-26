@@ -5,8 +5,10 @@ using System.Text;
 using System.Threading.Tasks;
 using API.Data.ManualMigrations;
 using API.DTOs;
+using API.DTOs.Progress;
 using API.Entities;
 using API.Entities.Enums;
+using API.Extensions.QueryExtensions;
 using API.Services.Tasks.Scanner.Parser;
 using AutoMapper;
 using AutoMapper.QueryableExtensions;
@@ -14,9 +16,11 @@ using Microsoft.EntityFrameworkCore;
 
 namespace API.Data.Repositories;
 #nullable enable
+
 public interface IAppUserProgressRepository
 {
     void Update(AppUserProgress userProgress);
+    void Remove(AppUserProgress userProgress);
     Task<int> CleanupAbandonedChapters();
     Task<bool> UserHasProgress(LibraryType libraryType, int userId);
     Task<AppUserProgress?> GetUserProgressAsync(int chapterId, int userId);
@@ -36,8 +40,9 @@ public interface IAppUserProgressRepository
     Task<DateTime?> GetLatestProgressForSeries(int seriesId, int userId);
     Task<DateTime?> GetFirstProgressForSeries(int seriesId, int userId);
     Task UpdateAllProgressThatAreMoreThanChapterPages();
+    Task<IList<FullProgressDto>> GetUserProgressForChapter(int chapterId, int userId = 0);
 }
-#nullable disable
+
 public class AppUserProgressRepository : IAppUserProgressRepository
 {
     private readonly DataContext _context;
@@ -52,6 +57,11 @@ public class AppUserProgressRepository : IAppUserProgressRepository
     public void Update(AppUserProgress userProgress)
     {
         _context.Entry(userProgress).State = EntityState.Modified;
+    }
+
+    public void Remove(AppUserProgress userProgress)
+    {
+        _context.Remove(userProgress);
     }
 
     /// <summary>
@@ -167,9 +177,10 @@ public class AppUserProgressRepository : IAppUserProgressRepository
                 (appUserProgresses, chapter) => new {appUserProgresses, chapter})
             .Where(p => p.appUserProgresses.SeriesId == seriesId && p.appUserProgresses.AppUserId == userId &&
                         p.appUserProgresses.PagesRead >= p.chapter.Pages)
-            .Select(p => p.chapter.Range)
+            .Where(p => p.chapter.MaxNumber != Parser.SpecialVolumeNumber)
+            .Select(p => p.chapter.MaxNumber)
             .ToListAsync();
-        return list.Count == 0 ? 0 : list.DefaultIfEmpty().Where(d => d != null).Max(d => (int) Math.Floor(Parser.MaxNumberFromRange(d)));
+        return list.Count == 0 ? 0 : (int) list.DefaultIfEmpty().Max(d => d);
     }
 
     public async Task<float> GetHighestFullyReadVolumeForSeries(int seriesId, int userId)
@@ -179,8 +190,10 @@ public class AppUserProgressRepository : IAppUserProgressRepository
                 (appUserProgresses, chapter) => new {appUserProgresses, chapter})
             .Where(p => p.appUserProgresses.SeriesId == seriesId && p.appUserProgresses.AppUserId == userId &&
                         p.appUserProgresses.PagesRead >= p.chapter.Pages)
+            .Where(p => p.chapter.MaxNumber != Parser.SpecialVolumeNumber)
             .Select(p => p.chapter.Volume.MaxNumber)
             .ToListAsync();
+
         return list.Count == 0 ? 0 : list.DefaultIfEmpty().Max();
     }
 
@@ -229,6 +242,33 @@ public class AppUserProgressRepository : IAppUserProgressRepository
         // Execute the batch SQL
         var batchSql = sqlBuilder.ToString();
         await _context.Database.ExecuteSqlRawAsync(batchSql);
+    }
+
+    /// <summary>
+    ///
+    /// </summary>
+    /// <param name="chapterId"></param>
+    /// <param name="userId">If 0, will pull all records</param>
+    /// <returns></returns>
+    public async Task<IList<FullProgressDto>> GetUserProgressForChapter(int chapterId, int userId = 0)
+    {
+        return await _context.AppUserProgresses
+            .WhereIf(userId > 0, p => p.AppUserId == userId)
+            .Where(p => p.ChapterId == chapterId)
+            .Include(p => p.AppUser)
+            .Select(p => new FullProgressDto()
+            {
+                AppUserId = p.AppUserId,
+                ChapterId = p.ChapterId,
+                PagesRead = p.PagesRead,
+                Id = p.Id,
+                Created = p.Created,
+                CreatedUtc = p.CreatedUtc,
+                LastModified = p.LastModified,
+                LastModifiedUtc = p.LastModifiedUtc,
+                UserName = p.AppUser.UserName
+            })
+            .ToListAsync();
     }
 
 #nullable enable

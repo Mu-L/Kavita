@@ -8,8 +8,10 @@ using API.DTOs.Filtering;
 using API.Entities;
 using API.Entities.Enums;
 using API.Helpers;
+using API.Services.Tasks.Scanner.Parser;
 using API.SignalR;
 using Hangfire;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace API.Services.Tasks;
@@ -20,6 +22,7 @@ public interface ICleanupService
     Task Cleanup();
     Task CleanupDbEntries();
     void CleanupCacheAndTempDirectories();
+    void CleanupCacheDirectory();
     Task DeleteSeriesCoverImages();
     Task DeleteChapterCoverImages();
     Task DeleteTagCoverImages();
@@ -32,6 +35,11 @@ public interface ICleanupService
     /// </summary>
     /// <returns></returns>
     Task CleanupWantToRead();
+
+    Task ConsolidateProgress();
+
+    Task CleanupMediaErrors();
+
 }
 /// <summary>
 /// Cleans up after operations on reoccurring basis
@@ -73,13 +81,23 @@ public class CleanupService : ICleanupService
 
         _logger.LogInformation("Starting Cleanup");
         await SendProgress(0F, "Starting cleanup");
+
         _logger.LogInformation("Cleaning temp directory");
         _directoryService.ClearDirectory(_directoryService.TempDirectory);
+
         await SendProgress(0.1F, "Cleaning temp directory");
         CleanupCacheAndTempDirectories();
+
         await SendProgress(0.25F, "Cleaning old database backups");
         _logger.LogInformation("Cleaning old database backups");
         await CleanupBackups();
+
+        await SendProgress(0.35F, "Consolidating Progress Events");
+        await ConsolidateProgress();
+
+        await SendProgress(0.4F, "Consolidating Media Errors");
+        await CleanupMediaErrors();
+
         await SendProgress(0.50F, "Cleaning deleted cover images");
         _logger.LogInformation("Cleaning deleted cover images");
         await DeleteSeriesCoverImages();
@@ -106,7 +124,7 @@ public class CleanupService : ICleanupService
         await _unitOfWork.AppUserProgressRepository.CleanupAbandonedChapters();
         await _unitOfWork.PersonRepository.RemoveAllPeopleNoLongerAssociated();
         await _unitOfWork.GenreRepository.RemoveAllGenreNoLongerAssociated();
-        await _unitOfWork.CollectionTagRepository.RemoveTagsWithoutSeries();
+        await _unitOfWork.CollectionTagRepository.RemoveCollectionsWithoutSeries();
         await _unitOfWork.ReadingListRepository.RemoveReadingListsWithoutSeries();
     }
 
@@ -178,6 +196,23 @@ public class CleanupService : ICleanupService
         _logger.LogInformation("Cache and temp directory purged");
     }
 
+    public void CleanupCacheDirectory()
+    {
+        _logger.LogInformation("Performing cleanup of Cache directories");
+        _directoryService.ExistOrCreate(_directoryService.CacheDirectory);
+
+        try
+        {
+            _directoryService.ClearDirectory(_directoryService.CacheDirectory);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "There was an issue deleting one or more folders/files during cleanup");
+        }
+
+        _logger.LogInformation("Cache directory purged");
+    }
+
     /// <summary>
     /// Removes Database backups older than configured total backups. If all backups are older than total backups days, only the latest is kept.
     /// </summary>
@@ -206,6 +241,108 @@ public class CleanupService : ICleanupService
             _directoryService.DeleteFiles(expiredBackups.Select(f => f.FullName));
         }
         _logger.LogInformation("Finished cleanup of Database backups at {Time}", DateTime.Now);
+    }
+
+    /// <summary>
+    /// Find any progress events that have duplicate, find the highest page read event, then copy over information from that and delete others, to leave one.
+    /// </summary>
+    public async Task ConsolidateProgress()
+    {
+        _logger.LogInformation("Consolidating Progress Events");
+        // AppUserProgress
+        var allProgress = await _unitOfWork.AppUserProgressRepository.GetAllProgress();
+
+        // Group by the unique identifiers that would make a progress entry unique
+        var duplicateGroups = allProgress
+            .GroupBy(p => new
+            {
+                p.AppUserId,
+                p.ChapterId,
+            })
+            .Where(g => g.Count() > 1);
+
+        foreach (var group in duplicateGroups)
+        {
+            // Find the entry with the highest pages read
+            var highestProgress = group
+                .OrderByDescending(p => p.PagesRead)
+                .ThenByDescending(p => p.LastModifiedUtc)
+                .First();
+
+            // Get the duplicate entries to remove (all except the highest progress)
+            var duplicatesToRemove = group
+                .Where(p => p.Id != highestProgress.Id)
+                .ToList();
+
+            // Copy over any non-null BookScrollId if the highest progress entry doesn't have one
+            if (string.IsNullOrEmpty(highestProgress.BookScrollId))
+            {
+                var firstValidScrollId = duplicatesToRemove
+                    .FirstOrDefault(p => !string.IsNullOrEmpty(p.BookScrollId))
+                    ?.BookScrollId;
+
+                if (firstValidScrollId != null)
+                {
+                    highestProgress.BookScrollId = firstValidScrollId;
+                    highestProgress.MarkModified();
+                }
+            }
+
+            // Remove the duplicates
+            foreach (var duplicate in duplicatesToRemove)
+            {
+                _unitOfWork.AppUserProgressRepository.Remove(duplicate);
+            }
+        }
+
+        // Save changes
+        await _unitOfWork.CommitAsync();
+    }
+
+    /// <summary>
+    /// Scans through Media Error and removes any entries that have been fixed and are within the DB (proper files where wordcount/pagecount > 0)
+    /// </summary>
+    public async Task CleanupMediaErrors()
+    {
+        try
+        {
+            List<string> errorStrings = ["This archive cannot be read or not supported", "File format not supported"];
+            var mediaErrors = await _unitOfWork.MediaErrorRepository.GetAllErrorsAsync(errorStrings);
+            _logger.LogInformation("Beginning consolidation of {Count} Media Errors", mediaErrors.Count);
+
+            var pathToErrorMap = mediaErrors
+                .GroupBy(me => Parser.NormalizePath(me.FilePath))
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.ToList() // The same file can be duplicated (rare issue when network drives die out midscan)
+                );
+
+            var normalizedPaths = pathToErrorMap.Keys.ToList();
+
+            // Find all files that are valid
+            var validFiles = await _unitOfWork.DataContext.MangaFile
+                .Where(f => normalizedPaths.Contains(f.FilePath) && f.Pages > 0)
+                .Select(f => f.FilePath)
+                .ToListAsync();
+
+            var removalCount = 0;
+            foreach (var validFilePath in validFiles)
+            {
+                if (!pathToErrorMap.TryGetValue(validFilePath, out var mediaError)) continue;
+
+                _unitOfWork.MediaErrorRepository.Remove(mediaError);
+                removalCount++;
+            }
+
+            await _unitOfWork.CommitAsync();
+
+            _logger.LogInformation("Finished consolidation of {Count} Media Errors, Removed: {RemovalCount}",
+                mediaErrors.Count, removalCount);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "There was an exception consolidating media errors");
+        }
     }
 
     public async Task CleanupLogs()

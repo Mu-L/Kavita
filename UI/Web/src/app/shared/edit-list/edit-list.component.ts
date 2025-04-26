@@ -1,27 +1,25 @@
 import {
   ChangeDetectionStrategy,
   ChangeDetectorRef,
-  Component, DestroyRef,
+  Component,
+  DestroyRef,
   EventEmitter,
   inject,
   Input,
   OnInit,
   Output
 } from '@angular/core';
-import {CommonModule} from '@angular/common';
-import {FormControl, FormGroup, ReactiveFormsModule} from "@angular/forms";
-import {Select2Module} from "ng-select2-component";
-import {TranslocoDirective} from "@ngneat/transloco";
+import {FormArray, FormControl, FormGroup, ReactiveFormsModule} from "@angular/forms";
+import {TranslocoDirective} from "@jsverse/transloco";
 import {takeUntilDestroyed} from "@angular/core/rxjs-interop";
 import {debounceTime, distinctUntilChanged, tap} from "rxjs/operators";
 
 @Component({
-  selector: 'app-edit-list',
-  standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, Select2Module, TranslocoDirective],
-  templateUrl: './edit-list.component.html',
-  styleUrl: './edit-list.component.scss',
-  changeDetection: ChangeDetectionStrategy.OnPush
+    selector: 'app-edit-list',
+    imports: [ReactiveFormsModule, TranslocoDirective],
+    templateUrl: './edit-list.component.html',
+    styleUrl: './edit-list.component.scss',
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class EditListComponent implements OnInit {
 
@@ -32,20 +30,16 @@ export class EditListComponent implements OnInit {
   @Input({required: true}) label = '';
   @Output() updateItems = new EventEmitter<Array<string>>();
 
-  form: FormGroup = new FormGroup({});
-  private combinedItems: string = '';
+  form: FormGroup = new FormGroup({items: new FormArray([])});
 
-  get Items() {
-    return this.combinedItems.split(',') || [''];
+  get ItemsArray(): FormArray {
+    return this.form.get('items') as FormArray;
   }
 
 
   ngOnInit() {
-    this.items.forEach((link, index) => {
-      this.form.addControl('link' + index, new FormControl(link, []));
-    });
+    this.items.forEach(item => this.addItem(item));
 
-    this.combinedItems = this.items.join(',');
 
     this.form.valueChanges.pipe(
       debounceTime(100),
@@ -56,32 +50,39 @@ export class EditListComponent implements OnInit {
     this.cdRef.markForCheck();
   }
 
+  createItemControl(value: string = ''): FormControl {
+    return new FormControl(value, []);
+  }
+
   add() {
-    this.combinedItems += ',';
-    this.form.addControl('link' + (this.Items.length - 1), new FormControl('', []));
+    this.ItemsArray.push(this.createItemControl());
     this.emit();
     this.cdRef.markForCheck();
+  }
+
+  addItem(value: string) {
+    this.ItemsArray.push(this.createItemControl(value));
   }
 
   remove(index: number) {
-    const tokens = this.combinedItems.split(',');
-    const tokenToRemove = tokens[index];
-
-    this.combinedItems = tokens.filter(t => t != tokenToRemove).join(',');
-    for (const [index, [key, value]] of Object.entries(Object.entries(this.form.controls))) {
-      if (key.startsWith('link') && this.form.get(key)?.value === tokenToRemove) {
-        this.form.removeControl('link' + index, {emitEvent: true});
-      }
+    // If it's the last item, just clear its value
+    if (this.ItemsArray.length === 1) {
+      this.ItemsArray.at(0).setValue('');
+      this.emit();
+      return;
     }
 
+    this.ItemsArray.removeAt(index);
     this.emit();
     this.cdRef.markForCheck();
   }
 
+  // Emit non-empty item values
   emit() {
-    this.updateItems.emit(Object.keys(this.form.controls)
-    .filter(key => key.startsWith('link'))
-    .map(key => this.form.get(key)?.value)
-    .filter(v => v !== null && v !== ''));
+    const nonEmptyItems = this.ItemsArray.controls
+      .map(control => control.value)
+      .filter(value => value !== null && value.trim() !== '');
+
+    this.updateItems.emit(nonEmptyItems);
   }
 }

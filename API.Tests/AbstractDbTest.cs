@@ -1,6 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
 using System.Data.Common;
-using System.IO.Abstractions.TestingHelpers;
 using System.Linq;
 using System.Threading.Tasks;
 using API.Data;
@@ -10,6 +9,7 @@ using API.Helpers;
 using API.Helpers.Builders;
 using API.Services;
 using AutoMapper;
+using Hangfire;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -18,36 +18,33 @@ using NSubstitute;
 
 namespace API.Tests;
 
-public abstract class AbstractDbTest
+public abstract class AbstractDbTest : AbstractFsTest , IDisposable
 {
     protected readonly DbConnection _connection;
     protected readonly DataContext _context;
     protected readonly IUnitOfWork _unitOfWork;
-
-
-    protected const string CacheDirectory = "C:/kavita/config/cache/";
-    protected const string CoverImageDirectory = "C:/kavita/config/covers/";
-    protected const string BackupDirectory = "C:/kavita/config/backups/";
-    protected const string LogDirectory = "C:/kavita/config/logs/";
-    protected const string BookmarkDirectory = "C:/kavita/config/bookmarks/";
-    protected const string SiteThemeDirectory = "C:/kavita/config/themes/";
-    protected const string TempDirectory = "C:/kavita/config/temp/";
-    protected const string DataDirectory = "C:/data/";
+    protected readonly IMapper _mapper;
 
     protected AbstractDbTest()
     {
-        var contextOptions = new DbContextOptionsBuilder()
+        var contextOptions = new DbContextOptionsBuilder<DataContext>()
             .UseSqlite(CreateInMemoryDatabase())
+            .EnableSensitiveDataLogging()
             .Options;
+
         _connection = RelationalOptionsExtension.Extract(contextOptions).Connection;
 
         _context = new DataContext(contextOptions);
+
+        _context.Database.EnsureCreated(); // Ensure DB schema is created
+
         Task.Run(SeedDb).GetAwaiter().GetResult();
 
         var config = new MapperConfiguration(cfg => cfg.AddProfile<AutoMapperProfiles>());
-        var mapper = config.CreateMapper();
+        _mapper = config.CreateMapper();
 
-        _unitOfWork = new UnitOfWork(_context, mapper, null);
+        GlobalConfiguration.Configuration.UseInMemoryStorage();
+        _unitOfWork = new UnitOfWork(_context, _mapper, null);
     }
 
     private static DbConnection CreateInMemoryDatabase()
@@ -60,47 +57,66 @@ public abstract class AbstractDbTest
 
     private async Task<bool> SeedDb()
     {
-        await _context.Database.MigrateAsync();
-        var filesystem = CreateFileSystem();
+        try
+        {
+            await _context.Database.EnsureCreatedAsync();
+            var filesystem = CreateFileSystem();
 
-        await Seed.SeedSettings(_context, new DirectoryService(Substitute.For<ILogger<DirectoryService>>(), filesystem));
+            await Seed.SeedSettings(_context, new DirectoryService(Substitute.For<ILogger<DirectoryService>>(), filesystem));
 
-        var setting = await _context.ServerSetting.Where(s => s.Key == ServerSettingKey.CacheDirectory).SingleAsync();
-        setting.Value = CacheDirectory;
+            var setting = await _context.ServerSetting.Where(s => s.Key == ServerSettingKey.CacheDirectory).SingleAsync();
+            setting.Value = CacheDirectory;
 
-        setting = await _context.ServerSetting.Where(s => s.Key == ServerSettingKey.BackupDirectory).SingleAsync();
-        setting.Value = BackupDirectory;
+            setting = await _context.ServerSetting.Where(s => s.Key == ServerSettingKey.BackupDirectory).SingleAsync();
+            setting.Value = BackupDirectory;
 
-        setting = await _context.ServerSetting.Where(s => s.Key == ServerSettingKey.BookmarkDirectory).SingleAsync();
-        setting.Value = BookmarkDirectory;
+            setting = await _context.ServerSetting.Where(s => s.Key == ServerSettingKey.BookmarkDirectory).SingleAsync();
+            setting.Value = BookmarkDirectory;
 
-        setting = await _context.ServerSetting.Where(s => s.Key == ServerSettingKey.TotalLogs).SingleAsync();
-        setting.Value = "10";
+            setting = await _context.ServerSetting.Where(s => s.Key == ServerSettingKey.TotalLogs).SingleAsync();
+            setting.Value = "10";
 
-        _context.ServerSetting.Update(setting);
+            _context.ServerSetting.Update(setting);
 
-        _context.Library.Add(new LibraryBuilder("Manga")
-            .WithFolderPath(new FolderPathBuilder("C:/data/").Build())
-            .Build());
-        return await _context.SaveChangesAsync() > 0;
+
+            _context.Library.Add(new LibraryBuilder("Manga")
+                .WithAllowMetadataMatching(true)
+                .WithFolderPath(new FolderPathBuilder(DataDirectory).Build())
+                .Build());
+
+            await _context.SaveChangesAsync();
+
+            await Seed.SeedMetadataSettings(_context);
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SeedDb] Error: {ex.Message}");
+            return false;
+        }
     }
 
     protected abstract Task ResetDb();
 
-    protected static MockFileSystem CreateFileSystem()
+    public void Dispose()
     {
-        var fileSystem = new MockFileSystem();
-        fileSystem.Directory.SetCurrentDirectory("C:/kavita/");
-        fileSystem.AddDirectory("C:/kavita/config/");
-        fileSystem.AddDirectory(CacheDirectory);
-        fileSystem.AddDirectory(CoverImageDirectory);
-        fileSystem.AddDirectory(BackupDirectory);
-        fileSystem.AddDirectory(BookmarkDirectory);
-        fileSystem.AddDirectory(SiteThemeDirectory);
-        fileSystem.AddDirectory(LogDirectory);
-        fileSystem.AddDirectory(TempDirectory);
-        fileSystem.AddDirectory(DataDirectory);
+        _context.Dispose();
+        _connection.Dispose();
+    }
 
-        return fileSystem;
+    /// <summary>
+    /// Add a role to an existing User. Commits.
+    /// </summary>
+    /// <param name="userId"></param>
+    /// <param name="roleName"></param>
+    protected async Task AddUserWithRole(int userId, string roleName)
+    {
+        var role = new AppRole { Id = userId, Name = roleName, NormalizedName = roleName.ToUpper() };
+
+        await _context.Roles.AddAsync(role);
+        await _context.UserRoles.AddAsync(new AppUserRole { UserId = userId, RoleId = userId });
+
+        await _context.SaveChangesAsync();
     }
 }

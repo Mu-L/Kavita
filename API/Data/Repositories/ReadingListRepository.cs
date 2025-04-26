@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using API.Data.Misc;
 using API.DTOs;
 using API.DTOs.ReadingLists;
 using API.Entities;
@@ -16,6 +17,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
 namespace API.Data.Repositories;
+#nullable enable
 
 [Flags]
 public enum ReadingListIncludes
@@ -36,6 +38,8 @@ public interface IReadingListRepository
     Task<IEnumerable<ReadingListItem>> GetReadingListItemsByIdAsync(int readingListId);
     Task<IEnumerable<ReadingListDto>> GetReadingListDtosForSeriesAndUserAsync(int userId, int seriesId,
         bool includePromoted);
+    Task<IEnumerable<ReadingListDto>> GetReadingListDtosForChapterAndUserAsync(int userId, int chapterId,
+        bool includePromoted);
     void Remove(ReadingListItem item);
     void Add(ReadingList list);
     void BulkRemove(IEnumerable<ReadingListItem> items);
@@ -45,10 +49,15 @@ public interface IReadingListRepository
     Task<IList<string>> GetRandomCoverImagesAsync(int readingListId);
     Task<IList<string>> GetAllCoverImagesAsync();
     Task<bool> ReadingListExists(string name);
-    IEnumerable<PersonDto> GetReadingListCharactersAsync(int readingListId);
+    Task<bool> ReadingListExistsForUser(string name, int userId);
+    IEnumerable<PersonDto> GetReadingListPeopleAsync(int readingListId, PersonRole role);
+    Task<ReadingListCast> GetReadingListAllPeopleAsync(int readingListId);
     Task<IList<ReadingList>> GetAllWithCoversInDifferentEncoding(EncodeFormat encodeFormat);
     Task<int> RemoveReadingListsWithoutSeries();
     Task<ReadingList?> GetReadingListByTitleAsync(string name, int userId, ReadingListIncludes includes = ReadingListIncludes.Items);
+    Task<IEnumerable<ReadingList>> GetReadingListsByIds(IList<int> ids, ReadingListIncludes includes = ReadingListIncludes.Items);
+    Task<IEnumerable<ReadingList>> GetReadingListsBySeriesId(int seriesId, ReadingListIncludes includes = ReadingListIncludes.Items);
+    Task<ReadingListInfoDto?> GetReadingListInfoAsync(int readingListId);
 }
 
 public class ReadingListRepository : IReadingListRepository
@@ -82,7 +91,7 @@ public class ReadingListRepository : IReadingListRepository
         return await _context.ReadingList
             .Where(c => c.Id == readingListId)
             .Select(c => c.CoverImage)
-            .SingleOrDefaultAsync();
+            .FirstOrDefaultAsync();
     }
 
     public async Task<IList<string>> GetAllCoverImagesAsync()
@@ -101,6 +110,7 @@ public class ReadingListRepository : IReadingListRepository
                 .SelectMany(r => r.Items.Select(ri => ri.Chapter.CoverImage))
                 .Where(t => !string.IsNullOrEmpty(t))
                 .ToListAsync();
+
         return data
             .OrderBy(_ => random.Next())
             .Take(4)
@@ -115,15 +125,95 @@ public class ReadingListRepository : IReadingListRepository
             .AnyAsync(x => x.NormalizedTitle != null && x.NormalizedTitle.Equals(normalized));
     }
 
-    public IEnumerable<PersonDto> GetReadingListCharactersAsync(int readingListId)
+    public async Task<bool> ReadingListExistsForUser(string name, int userId)
+    {
+        var normalized = name.ToNormalized();
+        return await _context.ReadingList
+            .AnyAsync(x => x.NormalizedTitle != null && x.NormalizedTitle.Equals(normalized) && x.AppUserId == userId);
+    }
+
+    public IEnumerable<PersonDto> GetReadingListPeopleAsync(int readingListId, PersonRole role)
     {
         return _context.ReadingListItem
             .Where(item => item.ReadingListId == readingListId)
-            .SelectMany(item => item.Chapter.People.Where(p => p.Role == PersonRole.Character))
-            .OrderBy(p => p.NormalizedName)
+            .SelectMany(item => item.Chapter.People)
+            .Where(p => p.Role == role)
+            .OrderBy(p => p.Person.NormalizedName)
+            .Select(p => p.Person)
             .Distinct()
             .ProjectTo<PersonDto>(_mapper.ConfigurationProvider)
             .AsEnumerable();
+    }
+
+    public async Task<ReadingListCast> GetReadingListAllPeopleAsync(int readingListId)
+    {
+        var allPeople = await _context.ReadingListItem
+            .Where(item => item.ReadingListId == readingListId)
+            .SelectMany(item => item.Chapter.People)
+            .OrderBy(p => p.Person.NormalizedName)
+            .Select(p => new
+            {
+                Role = p.Role,
+                Person = _mapper.Map<PersonDto>(p.Person)
+            })
+            .Distinct()
+            .ToListAsync();
+
+        // Create the ReadingListCast object
+        var cast = new ReadingListCast();
+
+        // Group people by role and populate the appropriate collections
+        foreach (var personGroup in allPeople.GroupBy(p => p.Role))
+        {
+            var people = personGroup.Select(pg => pg.Person).ToList();
+
+            switch (personGroup.Key)
+            {
+                case PersonRole.Writer:
+                    cast.Writers = people;
+                    break;
+                case PersonRole.CoverArtist:
+                    cast.CoverArtists = people;
+                    break;
+                case PersonRole.Publisher:
+                    cast.Publishers = people;
+                    break;
+                case PersonRole.Character:
+                    cast.Characters = people;
+                    break;
+                case PersonRole.Penciller:
+                    cast.Pencillers = people;
+                    break;
+                case PersonRole.Inker:
+                    cast.Inkers = people;
+                    break;
+                case PersonRole.Imprint:
+                    cast.Imprints = people;
+                    break;
+                case PersonRole.Colorist:
+                    cast.Colorists = people;
+                    break;
+                case PersonRole.Letterer:
+                    cast.Letterers = people;
+                    break;
+                case PersonRole.Editor:
+                    cast.Editors = people;
+                    break;
+                case PersonRole.Translator:
+                    cast.Translators = people;
+                    break;
+                case PersonRole.Team:
+                    cast.Teams = people;
+                    break;
+                case PersonRole.Location:
+                    cast.Locations = people;
+                    break;
+                case PersonRole.Other:
+                    break;
+            }
+        }
+
+        return cast;
     }
 
     public async Task<IList<ReadingList>> GetAllWithCoversInDifferentEncoding(EncodeFormat encodeFormat)
@@ -156,6 +246,51 @@ public class ReadingListRepository : IReadingListRepository
             .FirstOrDefaultAsync(x => x.NormalizedTitle != null && x.NormalizedTitle.Equals(normalized) && x.AppUserId == userId);
     }
 
+    public async Task<IEnumerable<ReadingList>> GetReadingListsByIds(IList<int> ids, ReadingListIncludes includes = ReadingListIncludes.Items)
+    {
+        return await _context.ReadingList
+            .Where(c => ids.Contains(c.Id))
+            .Includes(includes)
+            .AsSplitQuery()
+            .ToListAsync();
+    }
+    public async Task<IEnumerable<ReadingList>> GetReadingListsBySeriesId(int seriesId, ReadingListIncludes includes = ReadingListIncludes.Items)
+    {
+        return await _context.ReadingList
+            .Where(rl => rl.Items.Any(rli => rli.SeriesId == seriesId))
+            .Includes(includes)
+            .AsSplitQuery()
+            .ToListAsync();
+    }
+
+    /// <summary>
+    /// Returns a Partial ReadingListInfoDto. The HourEstimate needs to be calculated outside the repo
+    /// </summary>
+    /// <param name="readingListId"></param>
+    /// <returns></returns>
+    public async Task<ReadingListInfoDto?> GetReadingListInfoAsync(int readingListId)
+    {
+        // Get sum of these across all ReadingListItems: long wordCount, int pageCount, bool isEpub (assume false if any ReadingListeItem.Series.Format is non-epub)
+        var readingList = await _context.ReadingList
+            .Where(rl => rl.Id == readingListId)
+            .Include(rl => rl.Items)
+            .ThenInclude(item => item.Series)
+            .Include(rl => rl.Items)
+            .ThenInclude(item => item.Volume)
+            .Include(rl => rl.Items)
+            .ThenInclude(item => item.Chapter)
+            .Select(rl => new ReadingListInfoDto()
+            {
+                WordCount = rl.Items.Sum(item => item.Chapter.WordCount),
+                Pages = rl.Items.Sum(item => item.Chapter.Pages),
+                IsAllEpub = rl.Items.All(item => item.Series.Format == MangaFormat.Epub),
+            })
+            .FirstOrDefaultAsync();
+
+        return readingList;
+    }
+
+
     public void Remove(ReadingListItem item)
     {
         _context.ReadingListItem.Remove(item);
@@ -169,10 +304,11 @@ public class ReadingListRepository : IReadingListRepository
 
     public async Task<PagedList<ReadingListDto>> GetReadingListDtosForUserAsync(int userId, bool includePromoted, UserParams userParams, bool sortByLastModified = true)
     {
-        var userAgeRating = (await _context.AppUser.SingleAsync(u => u.Id == userId)).AgeRestriction;
+        var user = await _context.AppUser.FirstAsync(u => u.Id == userId);
         var query = _context.ReadingList
             .Where(l => l.AppUserId == userId || (includePromoted &&  l.Promoted ))
-            .Where(l => l.AgeRating >= userAgeRating);
+            .RestrictAgainstAgeRestriction(user.GetAgeRestriction());
+
         query = sortByLastModified ? query.OrderByDescending(l => l.LastModified) : query.OrderBy(l => l.NormalizedTitle);
 
        var finalQuery = query.ProjectTo<ReadingListDto>(_mapper.ConfigurationProvider)
@@ -183,9 +319,26 @@ public class ReadingListRepository : IReadingListRepository
 
     public async Task<IEnumerable<ReadingListDto>> GetReadingListDtosForSeriesAndUserAsync(int userId, int seriesId, bool includePromoted)
     {
+        var user = await _context.AppUser.FirstAsync(u => u.Id == userId);
         var query = _context.ReadingList
             .Where(l => l.AppUserId == userId || (includePromoted && l.Promoted ))
+            .RestrictAgainstAgeRestriction(user.GetAgeRestriction())
             .Where(l => l.Items.Any(i => i.SeriesId == seriesId))
+            .AsSplitQuery()
+            .OrderBy(l => l.Title)
+            .ProjectTo<ReadingListDto>(_mapper.ConfigurationProvider)
+            .AsNoTracking();
+
+        return await query.ToListAsync();
+    }
+
+    public async Task<IEnumerable<ReadingListDto>> GetReadingListDtosForChapterAndUserAsync(int userId, int chapterId, bool includePromoted)
+    {
+        var user = await _context.AppUser.FirstAsync(u => u.Id == userId);
+        var query = _context.ReadingList
+            .Where(l => l.AppUserId == userId || (includePromoted && l.Promoted ))
+            .RestrictAgainstAgeRestriction(user.GetAgeRestriction())
+            .Where(l => l.Items.Any(i => i.ChapterId == chapterId))
             .AsSplitQuery()
             .OrderBy(l => l.Title)
             .ProjectTo<ReadingListDto>(_mapper.ConfigurationProvider)
@@ -206,13 +359,7 @@ public class ReadingListRepository : IReadingListRepository
 
     public async Task<IEnumerable<ReadingListItemDto>> GetReadingListItemDtosByIdAsync(int readingListId, int userId)
     {
-        var userLibraries = _context.Library
-            .Include(l => l.AppUsers)
-            .Where(library => library.AppUsers.Any(user => user.Id == userId))
-            .AsSplitQuery()
-            .AsNoTracking()
-            .Select(library => library.Id)
-            .ToList();
+        var userLibraries = _context.Library.GetUserLibraries(userId);
 
         var items = await _context.ReadingListItem
             .Where(s => s.ReadingListId == readingListId)
@@ -223,7 +370,9 @@ public class ReadingListRepository : IReadingListRepository
                 chapter.ReleaseDate,
                 ReadingListItem = data,
                 ChapterTitleName = chapter.TitleName,
-                FileSize = chapter.Files.Sum(f => f.Bytes)
+                FileSize = chapter.Files.Sum(f => f.Bytes),
+                chapter.Summary,
+                chapter.IsSpecial
 
             })
             .Join(_context.Volume, s => s.ReadingListItem.VolumeId, volume => volume.Id, (data, volume) => new
@@ -234,6 +383,8 @@ public class ReadingListRepository : IReadingListRepository
                 data.ReleaseDate,
                 data.ChapterTitleName,
                 data.FileSize,
+                data.Summary,
+                data.IsSpecial,
                 VolumeId = volume.Id,
                 VolumeNumber = volume.Name,
             })
@@ -251,6 +402,8 @@ public class ReadingListRepository : IReadingListRepository
                     data.ReleaseDate,
                     data.ChapterTitleName,
                     data.FileSize,
+                    data.Summary,
+                    data.IsSpecial,
                     LibraryName = _context.Library.Where(l => l.Id == s.LibraryId).Select(l => l.Name).Single(),
                     LibraryType = _context.Library.Where(l => l.Id == s.LibraryId).Select(l => l.Type).Single()
                 })
@@ -272,7 +425,9 @@ public class ReadingListRepository : IReadingListRepository
                 LibraryType = data.LibraryType,
                 ChapterTitleName = data.ChapterTitleName,
                 LibraryName = data.LibraryName,
-                FileSize = data.FileSize
+                FileSize = data.FileSize,
+                Summary = data.Summary,
+                IsSpecial = data.IsSpecial
             })
             .Where(o => userLibraries.Contains(o.LibraryId))
             .OrderBy(rli => rli.Order)
@@ -306,8 +461,10 @@ public class ReadingListRepository : IReadingListRepository
 
     public async Task<ReadingListDto?> GetReadingListDtoByIdAsync(int readingListId, int userId)
     {
+        var user = await _context.AppUser.FirstAsync(u => u.Id == userId);
         return await _context.ReadingList
             .Where(r => r.Id == readingListId && (r.AppUserId == userId || r.Promoted))
+            .RestrictAgainstAgeRestriction(user.GetAgeRestriction())
             .ProjectTo<ReadingListDto>(_mapper.ConfigurationProvider)
             .SingleOrDefaultAsync();
     }

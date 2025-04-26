@@ -9,6 +9,7 @@ using API.DTOs.Dashboard;
 using API.DTOs.Filtering;
 using API.DTOs.Filtering.v2;
 using API.DTOs.Metadata;
+using API.DTOs.Metadata.Matching;
 using API.DTOs.Recommendation;
 using API.DTOs.SeriesDetail;
 using API.Entities;
@@ -18,11 +19,13 @@ using API.Helpers;
 using API.Services;
 using API.Services.Plus;
 using EasyCaching.Core;
+using Hangfire;
 using Kavita.Common;
 using Kavita.Common.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace API.Controllers;
@@ -38,14 +41,17 @@ public class SeriesController : BaseApiController
     private readonly ILicenseService _licenseService;
     private readonly ILocalizationService _localizationService;
     private readonly IExternalMetadataService _externalMetadataService;
+    private readonly IHostEnvironment _environment;
     private readonly IEasyCachingProvider _externalSeriesCacheProvider;
+    private readonly IEasyCachingProvider _matchSeriesCacheProvider;
     private const string CacheKey = "externalSeriesData_";
+    private const string MatchSeriesCacheKey = "matchSeries_";
 
 
     public SeriesController(ILogger<SeriesController> logger, ITaskScheduler taskScheduler, IUnitOfWork unitOfWork,
         ISeriesService seriesService, ILicenseService licenseService,
         IEasyCachingProviderFactory cachingProviderFactory, ILocalizationService localizationService,
-        IExternalMetadataService externalMetadataService)
+        IExternalMetadataService externalMetadataService, IHostEnvironment environment)
     {
         _logger = logger;
         _taskScheduler = taskScheduler;
@@ -54,8 +60,10 @@ public class SeriesController : BaseApiController
         _licenseService = licenseService;
         _localizationService = localizationService;
         _externalMetadataService = externalMetadataService;
+        _environment = environment;
 
         _externalSeriesCacheProvider = cachingProviderFactory.GetCachingProvider(EasyCacheProfiles.KavitaPlusExternalSeries);
+        _matchSeriesCacheProvider = cachingProviderFactory.GetCachingProvider(EasyCacheProfiles.KavitaPlusMatchSeries);
     }
 
     /// <summary>
@@ -91,7 +99,7 @@ public class SeriesController : BaseApiController
     /// <param name="filterDto"></param>
     /// <returns></returns>
     [HttpPost("v2")]
-    public async Task<ActionResult<IEnumerable<Series>>> GetSeriesForLibraryV2([FromQuery] UserParams userParams, [FromBody] FilterV2Dto filterDto)
+    public async Task<ActionResult<PagedList<SeriesDto>>> GetSeriesForLibraryV2([FromQuery] UserParams userParams, [FromBody] FilterV2Dto filterDto)
     {
         var userId = User.GetUserId();
         var series =
@@ -134,7 +142,7 @@ public class SeriesController : BaseApiController
         var username = User.GetUsername();
         _logger.LogInformation("Series {SeriesId} is being deleted by {UserName}", seriesId, username);
 
-        return Ok(await _seriesService.DeleteMultipleSeries(new[] {seriesId}));
+        return Ok(await _seriesService.DeleteMultipleSeries([seriesId]));
     }
 
     [Authorize(Policy = "RequireAdminRole")]
@@ -176,6 +184,7 @@ public class SeriesController : BaseApiController
         return Ok(await _unitOfWork.ChapterRepository.AddChapterModifiers(User.GetUserId(), chapter));
     }
 
+    [Obsolete("All chapter entities will load this data by default. Will not be maintained as of v0.8.1")]
     [HttpGet("chapter-metadata")]
     public async Task<ActionResult<ChapterMetadataDto>> GetChapterMetadata(int chapterId)
     {
@@ -228,22 +237,26 @@ public class SeriesController : BaseApiController
         {
             // Trigger a refresh when we are moving from a locked image to a non-locked
             needsRefreshMetadata = true;
-            series.CoverImage = string.Empty;
-            series.CoverImageLocked = updateSeries.CoverImageLocked;
+            series.CoverImage = null;
+            series.CoverImageLocked = false;
+            _logger.LogDebug("[SeriesCoverImageBug] Setting Series Cover Image to null: {SeriesId}", series.Id);
+            series.ResetColorScape();
+
         }
 
         _unitOfWork.SeriesRepository.Update(series);
 
-        if (await _unitOfWork.CommitAsync())
+        if (!await _unitOfWork.CommitAsync())
         {
-            if (needsRefreshMetadata)
-            {
-                _taskScheduler.RefreshSeriesMetadata(series.LibraryId, series.Id);
-            }
-            return Ok();
+            return BadRequest(await _localizationService.Translate(User.GetUserId(), "generic-series-update"));
         }
 
-        return BadRequest(await _localizationService.Translate(User.GetUserId(), "generic-series-update"));
+        if (needsRefreshMetadata)
+        {
+            _taskScheduler.RefreshSeriesMetadata(series.LibraryId, series.Id);
+        }
+
+        return Ok();
     }
 
     /// <summary>
@@ -315,11 +328,12 @@ public class SeriesController : BaseApiController
     /// <param name="libraryId"></param>
     /// <returns></returns>
     [HttpPost("all-v2")]
-    public async Task<ActionResult<IEnumerable<SeriesDto>>> GetAllSeriesV2(FilterV2Dto filterDto, [FromQuery] UserParams userParams, [FromQuery] int libraryId = 0)
+    public async Task<ActionResult<IEnumerable<SeriesDto>>> GetAllSeriesV2(FilterV2Dto filterDto, [FromQuery] UserParams userParams,
+        [FromQuery] int libraryId = 0, [FromQuery] QueryContext context = QueryContext.None)
     {
         var userId = User.GetUserId();
         var series =
-            await _unitOfWork.SeriesRepository.GetSeriesDtoForLibraryIdV2Async(userId, userParams, filterDto);
+            await _unitOfWork.SeriesRepository.GetSeriesDtoForLibraryIdV2Async(userId, userParams, filterDto, context);
 
         // Apply progress/rating information (I can't work out how to do this in initial query)
         if (series == null) return BadRequest(await _localizationService.Translate(User.GetUserId(), "no-series"));
@@ -339,7 +353,7 @@ public class SeriesController : BaseApiController
     /// <param name="libraryId"></param>
     /// <returns></returns>
     [HttpPost("all")]
-    [Obsolete("User all-v2")]
+    [Obsolete("Use all-v2")]
     public async Task<ActionResult<IEnumerable<SeriesDto>>> GetAllSeries(FilterDto filterDto, [FromQuery] UserParams userParams, [FromQuery] int libraryId = 0)
     {
         var userId = User.GetUserId();
@@ -398,7 +412,7 @@ public class SeriesController : BaseApiController
     [HttpPost("refresh-metadata")]
     public ActionResult RefreshSeriesMetadata(RefreshSeriesDto refreshSeriesDto)
     {
-        _taskScheduler.RefreshSeriesMetadata(refreshSeriesDto.LibraryId, refreshSeriesDto.SeriesId, refreshSeriesDto.ForceUpdate);
+        _taskScheduler.RefreshSeriesMetadata(refreshSeriesDto.LibraryId, refreshSeriesDto.SeriesId, refreshSeriesDto.ForceUpdate, refreshSeriesDto.ForceColorscape);
         return Ok();
     }
 
@@ -495,7 +509,7 @@ public class SeriesController : BaseApiController
     /// <param name="ageRating"></param>
     /// <returns></returns>
     /// <remarks>This is cached for an hour</remarks>
-    [ResponseCache(CacheProfileName = "Month", VaryByQueryKeys = new [] {"ageRating"})]
+    [ResponseCache(CacheProfileName = "Month", VaryByQueryKeys = ["ageRating"])]
     [HttpGet("age-rating")]
     public async Task<ActionResult<string>> GetAgeRating(int ageRating)
     {
@@ -609,6 +623,54 @@ public class SeriesController : BaseApiController
         var userId = User.GetUserId();
 
         return Ok(await _seriesService.GetEstimatedChapterCreationDate(seriesId, userId));
+    }
+
+    /// <summary>
+    /// Sends a request to Kavita+ API for all potential matches, sorted by relevance
+    /// </summary>
+    /// <param name="dto"></param>
+    /// <returns></returns>
+    [HttpPost("match")]
+    public async Task<ActionResult<IList<ExternalSeriesMatchDto>>> MatchSeries(MatchSeriesDto dto)
+    {
+        var cacheKey = $"{MatchSeriesCacheKey}-{dto.SeriesId}-{dto.Query}";
+        var results = await _matchSeriesCacheProvider.GetAsync<IList<ExternalSeriesMatchDto>>(cacheKey);
+        if (results.HasValue && !_environment.IsDevelopment())
+        {
+            return Ok(results.Value);
+        }
+
+        var ret = await _externalMetadataService.MatchSeries(dto);
+        await _matchSeriesCacheProvider.SetAsync(cacheKey, ret, TimeSpan.FromMinutes(1));
+
+        return Ok(ret);
+    }
+
+    /// <summary>
+    /// This will perform the fix match
+    /// </summary>
+    /// <param name="match"></param>
+    /// <param name="seriesId"></param>
+    /// <returns></returns>
+    [HttpPost("update-match")]
+    public ActionResult UpdateSeriesMatch([FromQuery] int seriesId, [FromQuery] int? aniListId, [FromQuery] long? malId, [FromQuery] int? cbrId)
+    {
+        BackgroundJob.Enqueue(() => _externalMetadataService.FixSeriesMatch(seriesId, aniListId, malId, cbrId));
+
+        return Ok();
+    }
+
+    /// <summary>
+    /// When true, will not perform a match and will prevent Kavita from attempting to match/scrobble against this series
+    /// </summary>
+    /// <param name="seriesId"></param>
+    /// <param name="dontMatch"></param>
+    /// <returns></returns>
+    [HttpPost("dont-match")]
+    public async Task<ActionResult> UpdateDontMatch([FromQuery] int seriesId, [FromQuery] bool dontMatch)
+    {
+        await _externalMetadataService.UpdateSeriesDontMatch(seriesId, dontMatch);
+        return Ok();
     }
 
 }

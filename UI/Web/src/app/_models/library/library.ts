@@ -6,8 +6,11 @@ export enum LibraryType {
     Book = 2,
     Images = 3,
     LightNovel = 4,
-    Magazine = 5
+    ComicVine = 5,
+    Magazine = 6
 }
+
+export const allLibraryTypes = [LibraryType.Manga, LibraryType.ComicVine, LibraryType.Comic, LibraryType.Book, LibraryType.LightNovel, LibraryType.Images, LibraryType.Magazine];
 
 export interface Library {
     id: number;
@@ -23,6 +26,7 @@ export interface Library {
     manageCollections: boolean;
     manageReadingLists: boolean;
     allowScrobbling: boolean;
+    allowMetadataMatching: boolean;
     collapseSeriesRelationships: boolean;
     libraryFileTypes: Array<FileTypeGroup>;
     excludePatterns: Array<string>;

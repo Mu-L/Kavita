@@ -59,4 +59,10 @@ public class AppUserProgress : IEntityDate
     /// User this progress belongs to
     /// </summary>
     public int AppUserId { get; set; }
+
+    public void MarkModified()
+    {
+        LastModified = DateTime.Now;
+        LastModifiedUtc = DateTime.UtcNow;
+    }
 }

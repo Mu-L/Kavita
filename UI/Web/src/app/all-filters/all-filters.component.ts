@@ -1,24 +1,22 @@
-import {ChangeDetectionStrategy, ChangeDetectorRef, Component, DestroyRef, inject, OnInit} from '@angular/core';
-import {CommonModule} from '@angular/common';
+import {ChangeDetectionStrategy, ChangeDetectorRef, Component, inject, OnInit} from '@angular/core';
 import {JumpKey} from "../_models/jumpbar/jump-key";
-import {EVENTS, Message, MessageHubService} from "../_services/message-hub.service";
-import {TranslocoDirective} from "@ngneat/transloco";
-import {CardItemComponent} from "../cards/card-item/card-item.component";
+import {TranslocoDirective} from "@jsverse/transloco";
 import {
   SideNavCompanionBarComponent
 } from "../sidenav/_components/side-nav-companion-bar/side-nav-companion-bar.component";
 import {SmartFilter} from "../_models/metadata/v2/smart-filter";
 import {FilterService} from "../_services/filter.service";
-import {CardDetailLayoutComponent} from "../cards/card-detail-layout/card-detail-layout.component";
-import {SafeHtmlPipe} from "../_pipes/safe-html.pipe";
 import {Router} from "@angular/router";
 import {Series} from "../_models/series";
 import {JumpbarService} from "../_services/jumpbar.service";
+import {ActionFactoryService} from "../_services/action-factory.service";
+import {ActionService} from "../_services/action.service";
+import {ManageSmartFiltersComponent} from "../sidenav/_components/manage-smart-filters/manage-smart-filters.component";
+import {DecimalPipe} from "@angular/common";
 
 @Component({
   selector: 'app-all-filters',
-  standalone: true,
-  imports: [CommonModule, TranslocoDirective, CardItemComponent, SideNavCompanionBarComponent, CardDetailLayoutComponent, SafeHtmlPipe],
+  imports: [TranslocoDirective, SideNavCompanionBarComponent, ManageSmartFiltersComponent, DecimalPipe],
   templateUrl: './all-filters.component.html',
   styleUrl: './all-filters.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -28,13 +26,19 @@ export class AllFiltersComponent implements OnInit {
   private readonly jumpbarService = inject(JumpbarService);
   private readonly router = inject(Router);
   private readonly filterService = inject(FilterService);
+  private readonly actionFactory = inject(ActionFactoryService);
+  private readonly actionService = inject(ActionService);
+
 
   jumpbarKeys: Array<JumpKey> = [];
   filters: SmartFilter[] = [];
   isLoading = true;
-  trackByIdentity = (index: number, item: SmartFilter) => item.name;
 
   ngOnInit() {
+    this.loadData();
+  }
+
+  loadData() {
     this.filterService.getAllFilters().subscribe(filters => {
       this.filters = filters;
       this.jumpbarKeys = this.jumpbarService.getJumpKeys(this.filters, (s: Series) => s.name);
@@ -42,13 +46,4 @@ export class AllFiltersComponent implements OnInit {
       this.cdRef.markForCheck();
     });
   }
-
-  async loadSmartFilter(filter: SmartFilter) {
-    await this.router.navigateByUrl('all-series?' + filter.filter);
-  }
-
-  isErrored(filter: SmartFilter) {
-    return !decodeURIComponent(filter.filter).includes('¦');
-  }
-
 }

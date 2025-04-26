@@ -1,17 +1,13 @@
 import {ChangeDetectionStrategy, Component, Input} from '@angular/core';
-import {CommonModule} from "@angular/common";
+import {NgClass, NgStyle} from "@angular/common";
 import {NgCircleProgressModule } from "ng-circle-progress";
 
 @Component({
-  selector: 'app-circular-loader',
-  standalone: true,
-  imports: [CommonModule, NgCircleProgressModule],
-  // providers: [
-  //   importProvidersFrom(NgCircleProgressModule),
-  // ],
-  templateUrl: './circular-loader.component.html',
-  styleUrls: ['./circular-loader.component.scss'],
-  changeDetection: ChangeDetectionStrategy.OnPush
+    selector: 'app-circular-loader',
+    imports: [NgCircleProgressModule, NgStyle, NgClass],
+    templateUrl: './circular-loader.component.html',
+    styleUrls: ['./circular-loader.component.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class CircularLoaderComponent {
 

@@ -12,7 +12,7 @@ public enum LibraryType
     /// <summary>
     /// Uses Comic regex for filename parsing
     /// </summary>
-    [Description("Comic")]
+    [Description("Comic (Legacy)")]
     Comic = 1,
     /// <summary>
     /// Uses Manga regex for filename parsing also uses epub metadata
@@ -30,8 +30,13 @@ public enum LibraryType
     [Description("Light Novel")]
     LightNovel = 4,
     /// <summary>
+    /// Uses Comic regex for filename parsing, uses Comic Vine type of Parsing
+    /// </summary>
+    [Description("Comic")]
+    ComicVine = 5,
+    /// <summary>
     /// Uses Magazine regex and is restricted to PDF and Archive by default
     /// </summary>
     [Description("Magazine")]
-    Magazine = 5
+    Magazine = 6
 }

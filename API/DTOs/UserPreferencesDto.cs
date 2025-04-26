@@ -1,9 +1,11 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using API.DTOs.Theme;
 using API.Entities;
 using API.Entities.Enums;
 using API.Entities.Enums.UserPreferences;
 
 namespace API.DTOs;
+#nullable enable
 
 public class UserPreferencesDto
 {
@@ -62,6 +64,13 @@ public class UserPreferencesDto
     [Required]
     public bool ShowScreenHints { get; set; } = true;
     /// <summary>
+    /// Manga Reader Option: Allow Automatic Webtoon detection
+    /// </summary>
+    [Required]
+    public bool AllowAutomaticWebtoonReaderDetection { get; set; }
+
+
+    /// <summary>
     /// Book Reader Option: Override extra Margin
     /// </summary>
     [Required]
@@ -104,7 +113,7 @@ public class UserPreferencesDto
     /// </summary>
     /// <remarks>Should default to Dark</remarks>
     [Required]
-    public SiteTheme? Theme { get; set; }
+    public SiteThemeDto? Theme { get; set; }
 
     [Required] public string BookReaderThemeName { get; set; } = null!;
     [Required]
@@ -152,4 +161,34 @@ public class UserPreferencesDto
     /// </summary>
     [Required]
     public string Locale { get; set; }
+
+    /// <summary>
+    /// PDF Reader: Theme of the Reader
+    /// </summary>
+    [Required]
+    public PdfTheme PdfTheme { get; set; } = PdfTheme.Dark;
+    /// <summary>
+    /// PDF Reader: Scroll mode of the reader
+    /// </summary>
+    [Required]
+    public PdfScrollMode PdfScrollMode { get; set; } = PdfScrollMode.Vertical;
+    /// <summary>
+    /// PDF Reader: Layout Mode of the reader
+    /// </summary>
+    [Required]
+    public PdfLayoutMode PdfLayoutMode { get; set; } = PdfLayoutMode.Multiple;
+    /// <summary>
+    /// PDF Reader: Spread Mode of the reader
+    /// </summary>
+    [Required]
+    public PdfSpreadMode PdfSpreadMode { get; set; } = PdfSpreadMode.None;
+
+    /// <summary>
+    /// Kavita+: Should this account have Scrobbling enabled for AniList
+    /// </summary>
+    public bool AniListScrobblingEnabled { get; set; }
+    /// <summary>
+    /// Kavita+: Should this account have Want to Read Sync enabled
+    /// </summary>
+    public bool WantToReadSync { get; set; }
 }

@@ -23,21 +23,24 @@ import {TopReadersComponent} from '../top-readers/top-readers.component';
 import {StatListComponent} from '../stat-list/stat-list.component';
 import {IconAndTitleComponent} from '../../../shared/icon-and-title/icon-and-title.component';
 import {AsyncPipe, DecimalPipe, NgIf} from '@angular/common';
-import {translate, TranslocoDirective, TranslocoService} from "@ngneat/transloco";
+import {translate, TranslocoDirective} from "@jsverse/transloco";
 import {FilterComparison} from "../../../_models/metadata/v2/filter-comparison";
 import {FilterField} from "../../../_models/metadata/v2/filter-field";
+import {AccountService} from "../../../_services/account.service";
 
 @Component({
     selector: 'app-server-stats',
     templateUrl: './server-stats.component.html',
     styleUrls: ['./server-stats.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    standalone: true,
     imports: [NgIf, IconAndTitleComponent, StatListComponent, TopReadersComponent, FileBreakdownStatsComponent,
-      PublicationStatusStatsComponent, ReadingActivityComponent, DayBreakdownComponent, AsyncPipe, DecimalPipe,
-      CompactNumberPipe, TimeDurationPipe, BytesPipe, TranslocoDirective]
+        PublicationStatusStatsComponent, ReadingActivityComponent, DayBreakdownComponent, AsyncPipe, DecimalPipe,
+        CompactNumberPipe, TimeDurationPipe, BytesPipe, TranslocoDirective]
 })
 export class ServerStatsComponent {
+
+  private readonly destroyRef = inject(DestroyRef);
+  protected readonly accountService = inject(AccountService);
 
   releaseYears$!: Observable<Array<PieDataItem>>;
   mostActiveUsers$!: Observable<Array<PieDataItem>>;
@@ -54,7 +57,7 @@ export class ServerStatsComponent {
   breakpointSubject = new ReplaySubject<Breakpoint>(1);
   breakpoint$: Observable<Breakpoint> = this.breakpointSubject.asObservable();
 
-  private readonly destroyRef = inject(DestroyRef);
+
 
   @HostListener('window:resize', ['$event'])
   @HostListener('window:orientationchange', ['$event'])

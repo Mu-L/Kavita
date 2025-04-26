@@ -41,6 +41,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Net.Http.Headers;
 using Microsoft.OpenApi.Models;
 using Serilog;
+using Swashbuckle.AspNetCore.SwaggerGen;
 using TaskScheduler = API.Services.TaskScheduler;
 
 namespace API;
@@ -137,14 +138,14 @@ public class Startup
         {
             c.SwaggerDoc("v1", new OpenApiInfo
             {
-                Version = BuildInfo.Version.ToString(),
-                Title = "Kavita",
-                Description = "Kavita provides a set of APIs that are authenticated by JWT. JWT token can be copied from local storage.",
+                Version = "3.1.0",
+                Title = $"Kavita (v{BuildInfo.Version})",
+                Description = $"Kavita provides a set of APIs that are authenticated by JWT. JWT token can be copied from local storage. Assume all fields of a payload are required. Built against v{BuildInfo.Version}",
                 License = new OpenApiLicense
                 {
                     Name = "GPL-3.0",
                     Url = new Uri("https://github.com/Kareadita/Kavita/blob/develop/LICENSE")
-                }
+                },
             });
 
             var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
@@ -176,7 +177,7 @@ public class Startup
                 Url = "{protocol}://{hostpath}",
                 Variables = new Dictionary<string, OpenApiServerVariable>
                 {
-                    { "protocol", new OpenApiServerVariable { Default = "http", Enum = new List<string> { "http", "https" } } },
+                    { "protocol", new OpenApiServerVariable { Default = "http", Enum = ["http", "https"]} },
                     { "hostpath", new OpenApiServerVariable { Default = "localhost:5000" } }
                 }
             });
@@ -207,7 +208,7 @@ public class Startup
             .UseSimpleAssemblyNameTypeSerializer()
             .UseRecommendedSerializerSettings()
             .UseInMemoryStorage());
-            //.UseSQLiteStorage("config/Hangfire.db")); // UseSQLiteStorage - SQLite has some issues around resuming jobs when aborted (and locking can cause high utilization)
+            //.UseSQLiteStorage("config/Hangfire.db")); // UseSQLiteStorage - SQLite has some issues around resuming jobs when aborted (and locking can cause high utilization) (NOTE: There is code to clear jobs on startup a redditor gave me)
 
         // Add the processing server as IHostedService
         services.AddHangfireServer(options =>
@@ -247,10 +248,46 @@ public class Startup
 
                     // v0.7.14
                     await MigrateEmailTemplates.Migrate(directoryService, logger);
-                    await MigrateVolumeNumber.Migrate(unitOfWork, dataContext, logger);
-                    await MigrateWantToReadImport.Migrate(unitOfWork, directoryService, logger);
+                    await MigrateVolumeNumber.Migrate(dataContext, logger);
+                    await MigrateWantToReadImport.Migrate(unitOfWork, dataContext, directoryService, logger);
                     await MigrateManualHistory.Migrate(dataContext, logger);
                     await MigrateClearNightlyExternalSeriesRecords.Migrate(dataContext, logger);
+
+                    // v0.8.0
+                    await MigrateVolumeLookupName.Migrate(dataContext, unitOfWork, logger);
+                    await MigrateChapterNumber.Migrate(dataContext, logger);
+                    await MigrateProgressExport.Migrate(dataContext, directoryService, logger);
+                    await MigrateMixedSpecials.Migrate(dataContext, unitOfWork, directoryService, logger);
+                    await MigrateLooseLeafChapters.Migrate(dataContext, unitOfWork, directoryService, logger);
+                    await MigrateChapterFields.Migrate(dataContext, unitOfWork, logger);
+                    await MigrateChapterRange.Migrate(dataContext, unitOfWork, logger);
+                    await MigrateMangaFilePath.Migrate(dataContext, logger);
+                    await MigrateCollectionTagToUserCollections.Migrate(dataContext, unitOfWork, logger);
+
+                    // v0.8.1
+                    await MigrateLowestSeriesFolderPath.Migrate(dataContext, unitOfWork, logger);
+
+                    // v0.8.2
+                    await ManualMigrateThemeDescription.Migrate(dataContext, logger);
+                    await MigrateInitialInstallData.Migrate(dataContext, logger, directoryService);
+                    await MigrateSeriesLowestFolderPath.Migrate(dataContext, logger, directoryService);
+
+                    // v0.8.4
+                    await MigrateLowestSeriesFolderPath2.Migrate(dataContext, unitOfWork, logger);
+                    await ManualMigrateRemovePeople.Migrate(dataContext, logger);
+                    await MigrateDuplicateDarkTheme.Migrate(dataContext, logger);
+                    await ManualMigrateUnscrobbleBookLibraries.Migrate(dataContext, logger);
+
+                    // v0.8.5
+                    await ManualMigrateBlacklistTableToSeries.Migrate(dataContext, logger);
+                    await ManualMigrateInvalidBlacklistSeries.Migrate(dataContext, logger);
+                    await ManualMigrateScrobbleErrors.Migrate(dataContext, logger);
+                    await ManualMigrateNeedsManualMatch.Migrate(dataContext, logger);
+                    await MigrateProgressExportForV085.Migrate(dataContext, directoryService, logger);
+
+                    // v0.8.6
+                    await ManualMigrateScrobbleSpecials.Migrate(dataContext, logger);
+                    await ManualMigrateScrobbleEventGen.Migrate(dataContext, logger);
 
                     //  Update the version in the DB after all migrations are run
                     var installVersion = await unitOfWork.SettingsRepository.GetSettingAsync(ServerSettingKey.InstallVersion);
@@ -341,7 +378,14 @@ public class Startup
 
         app.UseStaticFiles(new StaticFileOptions
         {
-            ContentTypeProvider = new FileExtensionContentTypeProvider(),
+            // bcmap files needed for PDF reader localizations (https://github.com/Kareadita/Kavita/issues/2970)
+            ContentTypeProvider = new FileExtensionContentTypeProvider
+            {
+                Mappings =
+                {
+                    [".bcmap"] = "application/octet-stream"
+                }
+            },
             HttpsCompression = HttpsCompressionMode.Compress,
             OnPrepareResponse = ctx =>
             {
@@ -384,7 +428,10 @@ public class Startup
             endpoints.MapControllers();
             endpoints.MapHub<MessageHub>("hubs/messages");
             endpoints.MapHub<LogHub>("hubs/logs");
-            endpoints.MapHangfireDashboard();
+            if (env.IsDevelopment())
+            {
+                endpoints.MapHangfireDashboard();
+            }
             endpoints.MapFallbackToController("Index", "Fallback");
         });
 
@@ -398,8 +445,8 @@ public class Startup
             catch (Exception)
             {
                 /* Swallow Exception */
+                Console.WriteLine($"Kavita - v{BuildInfo.Version}");
             }
-            Console.WriteLine($"Kavita - v{BuildInfo.Version}");
         });
 
         logger.LogInformation("Starting with base url as {BaseUrl}", basePath);
@@ -419,9 +466,7 @@ public class Startup
         }
         catch (Exception ex)
         {
-            if ((ex.Message.Contains("Permission denied")
-                 || ex.Message.Contains("UnauthorizedAccessException"))
-                && baseUrl.Equals(Configuration.DefaultBaseUrl) && OsInfo.IsDocker)
+            if (ex is UnauthorizedAccessException && baseUrl.Equals(Configuration.DefaultBaseUrl) && OsInfo.IsDocker)
             {
                 // Swallow the exception as the install is non-root and Docker
                 return;

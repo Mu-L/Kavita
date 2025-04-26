@@ -40,12 +40,25 @@
     font-display: swap;
 }
 
+@font-face {
+    font-family: "FastFontSerif";
+    src: url(../../../../assets/fonts/Fast_Font/Fast_Serif.woff2) format("woff2");
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "FastFontSans";
+    src: url(../../../../assets/fonts/Fast_Font/Fast_Sans.woff2) format("woff2");
+    font-display: swap;
+}
+
 :root {
     --br-actionbar-button-text-color: #6c757d;
     --accordion-body-bg-color: black;
     --accordion-header-bg-color: grey;
     --br-actionbar-button-hover-border-color: #6c757d;
     --br-actionbar-bg-color: white;
+    --default-state-scrollbar: var(--primary-color-scrollbar);
 }
 
 
@@ -53,6 +66,22 @@ $dark-form-background-no-opacity: rgb(1, 4, 9);
 $primary-color: #0062cc;
 $action-bar-height: 38px;
 
+.reader-container {
+  &::-webkit-scrollbar {
+    background-color: transparent;  /*make scrollbar space invisible */
+    width: inherit;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background-color: var(--default-state-scrollbar); /*makes it invisible when not hovering*/
+  }
+
+  &:hover {
+    &::-webkit-scrollbar-thumb {
+      background-color: var(--primary-color-scrollbar); /*On hover, it will turn grey*/
+    }
+  }
+}
 
 // Drawer
 .control-container {

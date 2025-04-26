@@ -25,7 +25,7 @@ public class ReadingListItemDto
     /// <summary>
     /// Release Date from Chapter
     /// </summary>
-    public DateTime ReleaseDate { get; set; }
+    public DateTime? ReleaseDate { get; set; }
     /// <summary>
     /// Used internally only
     /// </summary>
@@ -33,10 +33,16 @@ public class ReadingListItemDto
     /// <summary>
     /// The last time a reading list item (underlying chapter) was read by current authenticated user
     /// </summary>
-    public DateTime LastReadingProgressUtc { get; set; }
+    public DateTime? LastReadingProgressUtc { get; set; }
     /// <summary>
     /// File size of underlying item
     /// </summary>
     /// <remarks>This is only used for CDisplayEx</remarks>
     public long FileSize { get; set; }
+    /// <summary>
+    /// The chapter summary
+    /// </summary>
+    public string? Summary { get; set; }
+
+    public bool IsSpecial { get; set; }
 }

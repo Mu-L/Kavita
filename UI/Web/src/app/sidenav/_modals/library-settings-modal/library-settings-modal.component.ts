@@ -1,18 +1,6 @@
-import {
-  AfterViewInit,
-  ChangeDetectionStrategy,
-  ChangeDetectorRef,
-  Component,
-  DestroyRef,
-  inject,
-  Input,
-  OnInit
-} from '@angular/core';
+import {ChangeDetectionStrategy, ChangeDetectorRef, Component, DestroyRef, inject, Input, OnInit} from '@angular/core';
 import {FormControl, FormGroup, ReactiveFormsModule, Validators} from '@angular/forms';
 import {
-  NgbAccordionBody,
-  NgbAccordionButton, NgbAccordionCollapse,
-  NgbAccordionDirective, NgbAccordionHeader, NgbAccordionItem,
   NgbActiveModal,
   NgbModal,
   NgbModalModule,
@@ -32,7 +20,7 @@ import {
 } from 'src/app/admin/_modals/directory-picker/directory-picker.component';
 import {ConfirmService} from 'src/app/shared/confirm.service';
 import {Breakpoint, UtilityService} from 'src/app/shared/_services/utility.service';
-import {Library, LibraryType} from 'src/app/_models/library/library';
+import {allLibraryTypes, Library, LibraryType} from 'src/app/_models/library/library';
 import {ImageService} from 'src/app/_services/image.service';
 import {LibraryService} from 'src/app/_services/library.service';
 import {UploadService} from 'src/app/_services/upload.service';
@@ -40,17 +28,25 @@ import {takeUntilDestroyed} from "@angular/core/rxjs-interop";
 import {CommonModule} from "@angular/common";
 import {SentenceCasePipe} from "../../../_pipes/sentence-case.pipe";
 import {CoverImageChooserComponent} from "../../../cards/cover-image-chooser/cover-image-chooser.component";
-import {translate, TranslocoModule} from "@ngneat/transloco";
+import {translate, TranslocoModule} from "@jsverse/transloco";
 import {DefaultDatePipe} from "../../../_pipes/default-date.pipe";
 import {allFileTypeGroup, FileTypeGroup} from "../../../_models/library/file-type-group.enum";
 import {FileTypeGroupPipe} from "../../../_pipes/file-type-group.pipe";
 import {EditListComponent} from "../../../shared/edit-list/edit-list.component";
+import {WikiLink} from "../../../_models/wiki";
+import {SettingItemComponent} from "../../../settings/_components/setting-item/setting-item.component";
+import {SettingSwitchComponent} from "../../../settings/_components/setting-switch/setting-switch.component";
+import {SettingButtonComponent} from "../../../settings/_components/setting-button/setting-button.component";
+import {Action, ActionFactoryService, ActionItem} from "../../../_services/action-factory.service";
+import {ActionService} from "../../../_services/action.service";
+import {LibraryTypePipe} from "../../../_pipes/library-type.pipe";
 
 enum TabID {
   General = 'general-tab',
   Folder = 'folder-tab',
   Cover = 'cover-tab',
-  Advanced = 'advanced-tab'
+  Advanced = 'advanced-tab',
+  Tasks = 'tasks-tab'
 }
 
 enum StepID {
@@ -61,23 +57,18 @@ enum StepID {
 }
 
 @Component({
-  selector: 'app-library-settings-modal',
-  standalone: true,
-  imports: [CommonModule, NgbModalModule, NgbNavLink, NgbNavItem, NgbNavContent, ReactiveFormsModule, NgbTooltip,
-    SentenceCasePipe, NgbNav, NgbNavOutlet, CoverImageChooserComponent, TranslocoModule, DefaultDatePipe,
-    FileTypeGroupPipe, NgbAccordionDirective, NgbAccordionItem, NgbAccordionHeader, NgbAccordionButton, NgbAccordionCollapse, NgbAccordionBody, EditListComponent],
-  templateUrl: './library-settings-modal.component.html',
-  styleUrls: ['./library-settings-modal.component.scss'],
-  changeDetection: ChangeDetectionStrategy.OnPush
+    selector: 'app-library-settings-modal',
+    imports: [CommonModule, NgbModalModule, NgbNavLink, NgbNavItem, NgbNavContent, ReactiveFormsModule, NgbTooltip,
+        SentenceCasePipe, NgbNav, NgbNavOutlet, CoverImageChooserComponent, TranslocoModule, DefaultDatePipe,
+        FileTypeGroupPipe, EditListComponent, SettingItemComponent, SettingSwitchComponent, SettingButtonComponent],
+    templateUrl: './library-settings-modal.component.html',
+    styleUrls: ['./library-settings-modal.component.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class LibrarySettingsModalComponent implements OnInit {
 
-  protected readonly LibraryType = LibraryType;
-  protected readonly Breakpoint = Breakpoint;
-  protected readonly TabID = TabID;
-
-  public readonly utilityService = inject(UtilityService);
-  public readonly modal = inject(NgbActiveModal);
+  protected readonly utilityService = inject(UtilityService);
+  protected readonly modal = inject(NgbActiveModal);
   private readonly destroyRef = inject(DestroyRef);
   private readonly uploadService = inject(UploadService);
   private readonly modalService = inject(NgbModal);
@@ -87,11 +78,23 @@ export class LibrarySettingsModalComponent implements OnInit {
   private readonly toastr = inject(ToastrService);
   private readonly cdRef = inject(ChangeDetectorRef);
   private readonly imageService = inject(ImageService);
+  private readonly actionFactoryService = inject(ActionFactoryService);
+  private readonly actionService = inject(ActionService);
+
+  protected readonly LibraryType = LibraryType;
+  protected readonly Breakpoint = Breakpoint;
+  protected readonly TabID = TabID;
+  protected readonly WikiLink = WikiLink;
+  protected readonly Action = Action;
+  protected readonly libraryTypePipe = new LibraryTypePipe();
 
   @Input({required: true}) library!: Library | undefined;
 
   active = TabID.General;
   imageUrls: Array<string> = [];
+  protected readonly excludePatternTooltip = `<span>` + translate('library-settings-modal.exclude-patterns-tooltip') +
+  `<a class="ms-1" href="${WikiLink.ScannerExclude}" rel="noopener noreferrer" target="_blank">${translate('library-settings-modal.help')}` +
+  `<i class="fa fa-external-link-alt ms-1" aria-hidden="true"></i></a>`;
 
   libraryForm: FormGroup = new FormGroup({
     name: new FormControl<string>('', { nonNullable: true, validators: [Validators.required] }),
@@ -103,29 +106,34 @@ export class LibrarySettingsModalComponent implements OnInit {
     manageCollections: new FormControl<boolean>(true, { nonNullable: true, validators: [Validators.required] }),
     manageReadingLists: new FormControl<boolean>(true, { nonNullable: true, validators: [Validators.required] }),
     allowScrobbling: new FormControl<boolean>(true, { nonNullable: true, validators: [Validators.required] }),
+    allowMetadataMatching: new FormControl<boolean>(true, { nonNullable: true, validators: [Validators.required] }),
     collapseSeriesRelationships: new FormControl<boolean>(false, { nonNullable: true, validators: [Validators.required] }),
   });
 
   selectedFolders: string[] = [];
   madeChanges = false;
-  libraryTypes: string[] = []
+  libraryTypes = allLibraryTypes.map(f => {
+    return {title: this.libraryTypePipe.transform(f), value: f};
+  }).sort((a, b) => a.title.localeCompare(b.title));
 
   isAddLibrary = false;
   setupStep = StepID.General;
   fileTypeGroups = allFileTypeGroup;
   excludePatterns: Array<string> = [''];
 
+  tasks: ActionItem<Library>[] = this.getTasks();
+
   get IsKavitaPlusEligible() {
     const libType = parseInt(this.libraryForm.get('type')?.value + '', 10) as LibraryType;
     return libType === LibraryType.Manga || libType === LibraryType.LightNovel;
   }
 
-  ngOnInit(): void {
-    this.settingService.getLibraryTypes().subscribe((types) => {
-      this.libraryTypes = types;
-      this.cdRef.markForCheck();
-    });
+  get IsMetadataDownloadEligible() {
+    const libType = parseInt(this.libraryForm.get('type')?.value + '', 10) as LibraryType;
+    return libType === LibraryType.Manga || libType === LibraryType.LightNovel || libType === LibraryType.ComicVine;
+  }
 
+  ngOnInit(): void {
     if (this.library === undefined) {
       this.isAddLibrary = true;
       this.cdRef.markForCheck();
@@ -136,10 +144,20 @@ export class LibrarySettingsModalComponent implements OnInit {
       this.cdRef.markForCheck();
     }
 
-    if (this.library && (this.library.type === LibraryType.Comic || this.library.type === LibraryType.Book)) {
+    if (this.library && !(this.library.type === LibraryType.Manga || this.library.type === LibraryType.LightNovel) ) {
       this.libraryForm.get('allowScrobbling')?.setValue(false);
       this.libraryForm.get('allowScrobbling')?.disable();
+
+      if (this.IsMetadataDownloadEligible) {
+        this.libraryForm.get('allowMetadataMatching')?.setValue(this.library.allowMetadataMatching);
+        this.libraryForm.get('allowMetadataMatching')?.enable();
+      } else {
+        this.libraryForm.get('allowMetadataMatching')?.setValue(false);
+        this.libraryForm.get('allowMetadataMatching')?.disable();
+      }
     }
+
+
 
     this.libraryForm.get('name')?.valueChanges.pipe(
       debounceTime(100),
@@ -172,6 +190,7 @@ export class LibrarySettingsModalComponent implements OnInit {
             this.libraryForm.get(FileTypeGroup.Epub + '')?.setValue(false);
             break;
           case LibraryType.Comic:
+          case LibraryType.ComicVine:
             this.libraryForm.get(FileTypeGroup.Archive + '')?.setValue(true);
             this.libraryForm.get(FileTypeGroup.Images + '')?.setValue(false);
             this.libraryForm.get(FileTypeGroup.Pdf + '')?.setValue(false);
@@ -202,6 +221,23 @@ export class LibrarySettingsModalComponent implements OnInit {
             this.libraryForm.get(FileTypeGroup.Epub + '')?.setValue(false);
             break;
         }
+
+        this.libraryForm.get('allowScrobbling')?.setValue(this.IsKavitaPlusEligible);
+        this.libraryForm.get('allowMetadataMatching')?.setValue(this.IsKavitaPlusEligible);
+
+        if (!this.IsKavitaPlusEligible) {
+          this.libraryForm.get('allowScrobbling')?.disable();
+        } else {
+          this.libraryForm.get('allowScrobbling')?.enable();
+        }
+
+        if (this.IsMetadataDownloadEligible) {
+          this.libraryForm.get('allowMetadataMatching')?.enable();
+        } else {
+          this.libraryForm.get('allowMetadataMatching')?.disable();
+        }
+
+        this.cdRef.markForCheck();
       }),
       takeUntilDestroyed(this.destroyRef)
     ).subscribe();
@@ -218,15 +254,22 @@ export class LibrarySettingsModalComponent implements OnInit {
       this.libraryForm.get('manageCollections')?.setValue(this.library.manageCollections);
       this.libraryForm.get('manageReadingLists')?.setValue(this.library.manageReadingLists);
       this.libraryForm.get('collapseSeriesRelationships')?.setValue(this.library.collapseSeriesRelationships);
-      this.libraryForm.get('allowScrobbling')?.setValue(this.library.allowScrobbling);
+      this.libraryForm.get('allowScrobbling')?.setValue(this.IsKavitaPlusEligible ? this.library.allowScrobbling : false);
+      this.libraryForm.get('allowMetadataMatching')?.setValue(this.IsMetadataDownloadEligible ? this.library.allowMetadataMatching : false);
       this.selectedFolders = this.library.folders;
+
       this.madeChanges = false;
+
+      // TODO: Refactor into FormArray
       for(let fileTypeGroup of allFileTypeGroup) {
         this.libraryForm.addControl(fileTypeGroup + '', new FormControl(this.library.libraryFileTypes.includes(fileTypeGroup), []));
       }
+
+      // TODO: Refactor into FormArray
       for(let glob of this.library.excludePatterns) {
         this.libraryForm.addControl('excludeGlob-' , new FormControl(glob, []));
       }
+
       this.excludePatterns = this.library.excludePatterns;
     } else {
       for(let fileTypeGroup of allFileTypeGroup) {
@@ -260,7 +303,10 @@ export class LibrarySettingsModalComponent implements OnInit {
 
   forceScan() {
     this.libraryService.scan(this.library!.id, true)
-      .subscribe(() => this.toastr.info(translate('toasts.forced-scan-queued', {name: this.library!.name})));
+      .subscribe(() => {
+        this.toastr.info(translate('toasts.forced-scan-queued', {name: this.library!.name}));
+        this.close();
+      });
   }
 
   async save() {
@@ -326,7 +372,7 @@ export class LibrarySettingsModalComponent implements OnInit {
   }
 
   resetCoverImage() {
-    this.uploadService.updateLibraryCoverImage(this.library!.id, '').subscribe(() => {});
+    this.uploadService.updateLibraryCoverImage(this.library!.id, '', false).subscribe(() => {});
   }
 
   openDirectoryPicker() {
@@ -361,4 +407,30 @@ export class LibrarySettingsModalComponent implements OnInit {
     }
   }
 
+  getTasks() {
+    const blackList = [Action.Edit];
+    return this.actionFactoryService.getActionablesForSettingsPage(this.actionFactoryService.getLibraryActions(this.runTask.bind(this)), blackList);
+  }
+
+  async runTask(action: ActionItem<Library>) {
+    switch (action.action) {
+      case Action.Scan:
+        await this.actionService.scanLibrary(this.library!);
+        break;
+      case Action.RefreshMetadata:
+        await this.actionService.refreshLibraryMetadata(this.library!);
+        break;
+      case Action.GenerateColorScape:
+        await this.actionService.refreshLibraryMetadata(this.library!, undefined, false);
+        break;
+      case (Action.AnalyzeFiles):
+        await this.actionService.analyzeFiles(this.library!);
+        break;
+      case Action.Delete:
+        await this.actionService.deleteLibrary(this.library!, () => {
+          this.modal.dismiss();
+        });
+        break;
+    }
+  }
 }

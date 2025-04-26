@@ -17,23 +17,22 @@ import { ToastrService } from 'ngx-toastr';
 import { ImageService } from 'src/app/_services/image.service';
 import { KEY_CODES } from 'src/app/shared/_services/utility.service';
 import { UploadService } from 'src/app/_services/upload.service';
-import {CommonModule, DOCUMENT} from '@angular/common';
+import {DOCUMENT, NgClass} from '@angular/common';
 import {ImageComponent} from "../../shared/image/image.component";
-import {translate, TranslocoModule} from "@ngneat/transloco";
+import {translate, TranslocoModule} from "@jsverse/transloco";
 
 @Component({
-  selector: 'app-cover-image-chooser',
-  standalone: true,
-  imports: [
-    ReactiveFormsModule,
-    NgxFileDropModule,
-    CommonModule,
-    ImageComponent,
-    TranslocoModule
-  ],
-  templateUrl: './cover-image-chooser.component.html',
-  styleUrls: ['./cover-image-chooser.component.scss'],
-  changeDetection: ChangeDetectionStrategy.OnPush
+    selector: 'app-cover-image-chooser',
+    imports: [
+        ReactiveFormsModule,
+        NgxFileDropModule,
+        ImageComponent,
+        TranslocoModule,
+        NgClass
+    ],
+    templateUrl: './cover-image-chooser.component.html',
+    styleUrls: ['./cover-image-chooser.component.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class CoverImageChooserComponent implements OnInit {
 

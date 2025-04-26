@@ -1,39 +1,31 @@
 /// <reference types="@angular/localize" />
-import {
-  APP_INITIALIZER, ApplicationConfig,
-  importProvidersFrom,
-
-} from '@angular/core';
-import { AppComponent } from './app/app.component';
-import { NgCircleProgressModule } from 'ng-circle-progress';
-import { ToastrModule } from 'ngx-toastr';
-import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
-import { AppRoutingModule } from './app/app-routing.module';
-import { Title, BrowserModule, bootstrapApplication } from '@angular/platform-browser';
-import { JwtInterceptor } from './app/_interceptors/jwt.interceptor';
-import { ErrorInterceptor } from './app/_interceptors/error.interceptor';
-import {HTTP_INTERCEPTORS, withInterceptorsFromDi, provideHttpClient} from '@angular/common/http';
-import {
-    provideTransloco, TranslocoConfig,
-    TranslocoService
-} from "@ngneat/transloco";
+import {APP_INITIALIZER, ApplicationConfig, importProvidersFrom,} from '@angular/core';
+import {AppComponent} from './app/app.component';
+import {NgCircleProgressModule} from 'ng-circle-progress';
+import {ToastrModule} from 'ngx-toastr';
+import {BrowserAnimationsModule} from '@angular/platform-browser/animations';
+import {AppRoutingModule} from './app/app-routing.module';
+import {bootstrapApplication, BrowserModule, Title} from '@angular/platform-browser';
+import {JwtInterceptor} from './app/_interceptors/jwt.interceptor';
+import {ErrorInterceptor} from './app/_interceptors/error.interceptor';
+import {HTTP_INTERCEPTORS, provideHttpClient, withInterceptorsFromDi} from '@angular/common/http';
+import {provideTransloco, TranslocoConfig, TranslocoService} from "@jsverse/transloco";
 import {environment} from "./environments/environment";
-import {HttpLoader} from "./httpLoader";
-import {
-  provideTranslocoPersistLang,
-} from '@ngneat/transloco-persist-lang';
 import {AccountService} from "./app/_services/account.service";
 import {switchMap} from "rxjs";
-import {provideTranslocoLocale} from "@ngneat/transloco-locale";
-import {provideTranslocoPersistTranslations} from "@ngneat/transloco-persist-translations";
+import {provideTranslocoLocale} from "@jsverse/transloco-locale";
 import {LazyLoadImageModule} from "ng-lazyload-image";
 import {getSaver, SAVER} from "./app/_providers/saver.provider";
+import {distinctUntilChanged} from "rxjs/operators";
+import {APP_BASE_HREF, PlatformLocation} from "@angular/common";
+import {provideTranslocoPersistTranslations} from '@jsverse/transloco-persist-translations';
+import {HttpLoader} from "./httpLoader";
 
 const disableAnimations = !('animate' in document.documentElement);
 
 export function preloadUser(userService: AccountService, transloco: TranslocoService) {
   return function() {
-    return userService.currentUser$.pipe(switchMap((user) => {
+    return userService.currentUser$.pipe(distinctUntilChanged(), switchMap((user) => {
       if (user && user.preferences.locale) {
         transloco.setActiveLang(user.preferences.locale);
         return transloco.load(user.preferences.locale)
@@ -97,7 +89,7 @@ const languageCodes = [
   'syr', 'syr_SY', 'ta', 'ta_IN', 'te', 'te_IN', 'th', 'th_TH', 'tl', 'tl_PH', 'tn',
   'tn_ZA', 'tr', 'tr_TR', 'tt', 'tt_RU', 'ts', 'uk', 'uk_UA', 'ur', 'ur_PK', 'uz',
   'uz_UZ', 'uz_UZ', 'vi', 'vi_VN', 'xh', 'xh_ZA', 'zh', 'zh_CN', 'zh_HK', 'zh_MO',
-  'zh_SG', 'zh_TW', 'zu', 'zu_ZA', 'zh_Hans', 'zh_Hant', 'nb_NO'
+  'zh_SG', 'zh_TW', 'zu', 'zu_ZA', 'zh_Hans', 'zh_Hant', 'nb_NO', 'ga'
 ];
 
 const translocoOptions = {
@@ -110,9 +102,15 @@ const translocoOptions = {
     missingHandler: {
       useFallbackTranslation: true,
       allowEmpty: false,
+      logMissingKey: true
     },
+    failedRetries: 2,
   } as TranslocoConfig
 };
+
+function getBaseHref(platformLocation: PlatformLocation): string {
+  return platformLocation.getBaseHrefFromDOM();
+}
 
 bootstrapApplication(AppComponent, {
     providers: [
@@ -136,18 +134,18 @@ bootstrapApplication(AppComponent, {
         provideTranslocoPersistTranslations({
           loader: HttpLoader,
           storage: { useValue: localStorage },
-          ttl: 604800
-        }),
-        provideTranslocoPersistLang({
-          storage: {
-            useValue: localStorage,
-          },
+          ttl: environment.production ? 129600 : 0 // 1.5 days in seconds for prod
         }),
         { provide: HTTP_INTERCEPTORS, useClass: ErrorInterceptor, multi: true },
         { provide: HTTP_INTERCEPTORS, useClass: JwtInterceptor, multi: true },
         preLoad,
         Title,
         { provide: SAVER, useFactory: getSaver },
+        {
+          provide: APP_BASE_HREF,
+          useFactory: getBaseHref,
+          deps: [PlatformLocation]
+        },
         provideHttpClient(withInterceptorsFromDi())
     ]
 } as ApplicationConfig)
