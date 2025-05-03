@@ -28,6 +28,10 @@ public class UpdateLibraryDto
     public bool AllowScrobbling { get; init; }
     [Required]
     public bool AllowMetadataMatching { get; init; }
+    [Required]
+    public bool AllowFilenameParsing { get; set; } = true;
+    [Required]
+    public bool AllowMetadataParsing { get; set; } = true;
     /// <summary>
     /// What types of files to allow the scanner to pickup
     /// </summary>

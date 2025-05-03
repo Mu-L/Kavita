@@ -193,10 +193,6 @@ public class ProcessSeries : IProcessSeries
 
                 if (seriesAdded)
                 {
-                    // See if any recommendations can link up to the series and pre-fetch external metadata for the series
-                    // BackgroundJob.Enqueue(() =>
-                    //     _externalMetadataService.FetchSeriesMetadata(series.Id, series.Library.Type));
-
                     await _eventHub.SendMessageAsync(MessageFactory.SeriesAdded,
                         MessageFactory.SeriesAddedEvent(series.Id, series.Name, series.LibraryId), false);
                 }
@@ -216,6 +212,7 @@ public class ProcessSeries : IProcessSeries
 
         if (seriesAdded)
         {
+            // Prefetch metadata if applicable
             await _externalMetadataService.FetchSeriesMetadata(series.Id, series.Library.Type);
         }
         await _metadataService.GenerateCoversForSeries(series.LibraryId, series.Id, false, false);

@@ -67,4 +67,14 @@ public class LibraryDto
     /// <remarks>This does not exclude the library from being linked to wrt Series Relationships</remarks>
     /// <remarks>Requires a valid LicenseKey</remarks>
     public bool AllowMetadataMatching { get; set; } = true;
+    /// <summary>
+    /// Allow Kavita to parse Metadata from Files based on Filename
+    /// </summary>
+    /// <remarks>Cannot be false if <see cref="AllowMetadataMatching"/> is false</remarks>
+    public bool AllowFilenameParsing { get; set; } = true;
+    /// <summary>
+    /// Allow Kavita to parse Metadata from files (ComicInfo/Epub/Pdf)
+    /// </summary>
+    /// <remarks>Cannot be false if <see cref="AllowFilenameParsing"/> is false</remarks>
+    public bool AllowMetadataParsing { get; set; } = true;
 }

@@ -16,6 +16,7 @@ public class BasicParser(IDirectoryService directoryService, IDefaultParser imag
     {
         var fileName = directoryService.FileSystem.Path.GetFileNameWithoutExtension(filePath);
         // TODO: Potential Bug: This will return null, but on Image libraries, if all images, we would want to include this.
+        // NOTE: This may no longer be needed as we have file type group support now, thus an image wouldn't come for a Series
         if (type != LibraryType.Image && Parser.IsCoverImage(directoryService.FileSystem.Path.GetFileName(filePath))) return null;
 
         if (Parser.IsImage(filePath))

@@ -115,4 +115,16 @@ public class LibraryBuilder : IEntityBuilder<Library>
         _library.AllowScrobbling = allowScrobbling;
         return this;
     }
+
+    public LibraryBuilder WithAllowFilenameParsing(bool allow)
+    {
+        _library.AllowFilenameParsing = allow;
+        return this;
+    }
+
+    public LibraryBuilder WithAllowMetadataParsing(bool allow)
+    {
+        _library.AllowMetadataParsing = allow;
+        return this;
+    }
 }

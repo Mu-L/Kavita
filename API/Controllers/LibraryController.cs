@@ -623,6 +623,9 @@ public class LibraryController : BaseApiController
         library.ManageReadingLists = dto.ManageReadingLists;
         library.AllowScrobbling = dto.AllowScrobbling;
         library.AllowMetadataMatching = dto.AllowMetadataMatching;
+        library.AllowFilenameParsing = dto.AllowFilenameParsing;
+        library.AllowMetadataParsing = dto.AllowMetadataParsing;
+
         library.LibraryFileTypes = dto.FileGroupTypes
             .Select(t => new LibraryFileTypeGroup() {FileTypeGroup = t, LibraryId = library.Id})
             .Distinct()

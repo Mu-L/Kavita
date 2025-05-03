@@ -938,4 +938,9 @@ public class ScannerServiceTests : AbstractDbTest
         Assert.True(sortedChapters[1].SortOrder.Is(4f));
         Assert.True(sortedChapters[2].SortOrder.Is(5f));
     }
+
+    #region Scanner Overhaul
+
+
+    #endregion
 }
