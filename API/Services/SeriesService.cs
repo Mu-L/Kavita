@@ -633,6 +633,7 @@ public class SeriesService : ISeriesService
 
     public async Task<string> FormatChapterTitle(int userId, bool isSpecial, LibraryType libraryType, string chapterRange, string? chapterTitle, bool withHash)
     {
+        // TODO: Refactor so this is unit testable
         if (string.IsNullOrEmpty(chapterTitle) && (isSpecial || libraryType == LibraryType.Book)) throw new ArgumentException("Chapter Title cannot be null");
 
         if (isSpecial)

@@ -752,6 +752,7 @@ public class ExternalMetadataService : IExternalMetadataService
             {
                 Name = w.Name,
                 AniListId = ScrobblingService.ExtractId<int>(w.Url, ScrobblingService.AniListCharacterWebsite),
+                // Can I tag links to resolve favicon? Need to parse html, rewrite the urls, then have a
                 Description = StringHelper.CorrectUrls(StringHelper.RemoveSourceInDescription(StringHelper.SquashBreaklines(w.Description))),
             })
             .Concat(series.Metadata.People
