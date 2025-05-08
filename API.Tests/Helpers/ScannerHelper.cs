@@ -35,7 +35,7 @@ public class ScannerHelper
     private readonly string _testDirectory = Path.Join(Directory.GetCurrentDirectory(), "../../../Services/Test Data/ScannerService/ScanTests");
     private readonly string _testcasesDirectory = Path.Join(Directory.GetCurrentDirectory(), "../../../Services/Test Data/ScannerService/TestCases");
     private readonly string _imagePath = Path.Join(Directory.GetCurrentDirectory(), "../../../Services/Test Data/ScannerService/1x1.png");
-    private static readonly string[] ComicInfoExtensions = new[] { ".cbz", ".cbr", ".zip", ".rar" };
+    private static readonly string[] ComicInfoExtensions = [".cbz", ".cbr", ".zip", ".rar"];
 
     public ScannerHelper(IUnitOfWork unitOfWork, ITestOutputHelper testOutputHelper)
     {
@@ -43,7 +43,7 @@ public class ScannerHelper
         _testOutputHelper = testOutputHelper;
     }
 
-    public async Task<Library> GenerateScannerData(string testcase, Dictionary<string, ComicInfo> comicInfos = null)
+    public async Task<Library> GenerateScannerData(string testcase, Dictionary<string, ComicInfo>? comicInfos = null)
     {
         var testDirectoryPath = await GenerateTestDirectory(Path.Join(_testcasesDirectory, testcase), comicInfos);
 
@@ -64,7 +64,7 @@ public class ScannerHelper
         return library;
     }
 
-    public ScannerService CreateServices(DirectoryService ds = null, IFileSystem fs = null)
+    public ScannerService CreateServices(DirectoryService? ds = null, IFileSystem? fs = null)
     {
         fs ??= new FileSystem();
         ds ??= new DirectoryService(Substitute.For<ILogger<DirectoryService>>(), fs);
@@ -113,7 +113,7 @@ public class ScannerHelper
 
 
 
-    private async Task<string> GenerateTestDirectory(string mapPath, Dictionary<string, ComicInfo> comicInfos = null)
+    private async Task<string> GenerateTestDirectory(string mapPath, Dictionary<string, ComicInfo>? comicInfos = null)
     {
         // Read the map file
         var mapContent = await File.ReadAllTextAsync(mapPath);
@@ -130,7 +130,7 @@ public class ScannerHelper
         Directory.CreateDirectory(testDirectory);
 
         // Generate the files and folders
-        await Scaffold(testDirectory, filePaths, comicInfos);
+        await Scaffold(testDirectory, filePaths ?? [], comicInfos);
 
         _testOutputHelper.WriteLine($"Test Directory Path: {testDirectory}");
 
@@ -138,18 +138,20 @@ public class ScannerHelper
     }
 
 
-    public async Task Scaffold(string testDirectory, List<string> filePaths, Dictionary<string, ComicInfo> comicInfos = null)
+    public async Task Scaffold(string testDirectory, List<string> filePaths, Dictionary<string, ComicInfo>? comicInfos = null)
     {
         foreach (var relativePath in filePaths)
         {
             var fullPath = Path.Combine(testDirectory, relativePath);
             var fileDir = Path.GetDirectoryName(fullPath);
 
+            if (string.IsNullOrEmpty(fileDir)) continue;
+
             // Create the directory if it doesn't exist
             if (!Directory.Exists(fileDir))
             {
                 Directory.CreateDirectory(fileDir);
-                Console.WriteLine($"Created directory: {fileDir}");
+                _testOutputHelper.WriteLine($"Created directory: {fileDir}");
             }
 
             var ext = Path.GetExtension(fullPath).ToLower();
@@ -161,7 +163,7 @@ public class ScannerHelper
             {
                 // Create an empty file
                 await File.Create(fullPath).DisposeAsync();
-                Console.WriteLine($"Created empty file: {fullPath}");
+                _testOutputHelper.WriteLine($"Created empty file: {fullPath}");
             }
         }
     }
@@ -188,7 +190,7 @@ public class ScannerHelper
             }
 
         }
-        Console.WriteLine($"Created minimal CBZ archive: {filePath} with{(comicInfo != null ? "" : "out")} metadata.");
+        _testOutputHelper.WriteLine($"Created minimal CBZ archive: {filePath} with{(comicInfo != null ? "" : "out")} metadata.");
     }
 
 

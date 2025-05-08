@@ -18,14 +18,11 @@ namespace API.Tests.Services;
 
 public class ScannerServiceTests : AbstractDbTest
 {
-    private readonly ITestOutputHelper _testOutputHelper;
     private readonly ScannerHelper _scannerHelper;
     private readonly string _testDirectory = Path.Join(Directory.GetCurrentDirectory(), "../../../Services/Test Data/ScannerService/ScanTests");
 
     public ScannerServiceTests(ITestOutputHelper testOutputHelper)
     {
-        _testOutputHelper = testOutputHelper;
-
         // Set up Hangfire to use in-memory storage for testing
         GlobalConfiguration.Configuration.UseInMemoryStorage();
         _scannerHelper = new ScannerHelper(UnitOfWork, testOutputHelper);
