@@ -623,6 +623,12 @@ public class LibraryController : BaseApiController
         library.ManageReadingLists = dto.ManageReadingLists;
         library.AllowScrobbling = dto.AllowScrobbling;
         library.AllowMetadataMatching = dto.AllowMetadataMatching;
+
+        if (!dto.AllowFilenameParsing && !dto.AllowMetadataParsing)
+        {
+            throw new InvalidOperationException("At least one of UseFilenameParsing or UseInternalMetadataParsing must be true.");
+        }
+
         library.AllowFilenameParsing = dto.AllowFilenameParsing;
         library.AllowMetadataParsing = dto.AllowMetadataParsing;
 

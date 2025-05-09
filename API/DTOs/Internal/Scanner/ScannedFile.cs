@@ -10,5 +10,6 @@ public sealed record ScannedFile
     private string _filePath;
 
     public required DateTime LastModifiedUtc { get; set; }
+    public required string FolderRoot { get; set; }
     public required MangaFormat Format { get; set; }
 }

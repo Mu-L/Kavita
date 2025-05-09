@@ -31,34 +31,34 @@ public class FileScanner : IFileScanner
     }
 
 
-    public async Task ScanLibrary(int libraryId, bool forceScan = false)
-    {
-        var library = await _unitOfWork.LibraryRepository.GetLibraryForIdAsync(libraryId,
-            LibraryIncludes.Folders | LibraryIncludes.ExcludePatterns | LibraryIncludes.FileTypes);
-
-        if (library == null)
-        {
-            return;
-        }
-
-        // Create a ScannerOption
-        var options = new ScannerOption()
-        {
-            FileTypePattern = library.LibraryFileTypes.Select(s => s.FileTypeGroup).ToList(),
-            ForceScan = forceScan,
-            ExcludePatterns = [.. library.LibraryExcludePatterns.Select(s => s.Pattern)],
-            FolderPaths = [.. library.Folders.Select(f => Parser.Parser.NormalizePath(f.Path))]
-        };
-
-
-        // Find all the information about the directories and their files
-        var files = ScanFiles(options);
-
-        // Parse said information
-
-
-        return;
-    }
+    // public async Task ScanLibrary(int libraryId, bool forceScan = false)
+    // {
+    //     var library = await _unitOfWork.LibraryRepository.GetLibraryForIdAsync(libraryId,
+    //         LibraryIncludes.Folders | LibraryIncludes.ExcludePatterns | LibraryIncludes.FileTypes);
+    //
+    //     if (library == null)
+    //     {
+    //         return;
+    //     }
+    //
+    //     // Create a ScannerOption
+    //     var options = new ScannerOption()
+    //     {
+    //         FileTypePattern = library.LibraryFileTypes.Select(s => s.FileTypeGroup).ToList(),
+    //         ForceScan = forceScan,
+    //         ExcludePatterns = [.. library.LibraryExcludePatterns.Select(s => s.Pattern)],
+    //         FolderPaths = [.. library.Folders.Select(f => Parser.Parser.NormalizePath(f.Path))]
+    //     };
+    //
+    //
+    //     // Find all the information about the directories and their files
+    //     var files = ScanFiles(options);
+    //
+    //     // Parse said information
+    //
+    //
+    //     return;
+    // }
 
     public List<ScannedDirectory> ScanFiles(ScannerOption options)
     {
@@ -120,6 +120,7 @@ public class FileScanner : IFileScanner
                 // Add the directory and its files to the result
                 scannedDirectories.Add(new ScannedDirectory
                 {
+                    FolderRoot = folderPath,
                     DirectoryPath = directory,
                     LastModifiedUtc = directoryLastModifiedUtc,
                     Files = files

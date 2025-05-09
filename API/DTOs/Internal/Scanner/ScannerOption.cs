@@ -22,4 +22,12 @@ public sealed record ScannerOption
     /// Skip LastModified checks
     /// </summary>
     public bool ForceScan { get; set; }
+    /// <summary>
+    /// Allow use of Filename Parsing
+    /// </summary>
+    public bool UseFilenameParsing { get; set; }
+    /// <summary>
+    /// Allow use of Internal Metadata
+    /// </summary>
+    public bool UseInternalMetadataParsing { get; set; }
 }

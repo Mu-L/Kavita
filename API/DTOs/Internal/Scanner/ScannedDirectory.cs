@@ -16,7 +16,14 @@ public sealed record ScannedDirectory
     public required string DirectoryPath { get => _directoryPath; set => _directoryPath = Parser.NormalizePath(value); }
     private string _directoryPath;
 
-    public required DateTime LastModifiedUtc { get; set; }
+    /// <summary>
+    /// Root where the directory resides
+    /// </summary>
+    /// <remarks>Library Root</remarks>
+    public required string FolderRoot { get => _folderRoot; set => _folderRoot = Parser.NormalizePath(value); }
+    private string _folderRoot;
 
-    public List<ScannedFile> Files { get; set; } = [];
+    public required DateTime LastModifiedUtc { get; init; }
+
+    public List<ScannedFile> Files { get; init; } = [];
 }
