@@ -80,14 +80,15 @@ public class ScannerHelper
         var processSeries = new ProcessSeries(_unitOfWork, Substitute.For<ILogger<ProcessSeries>>(),
             Substitute.For<IEventHub>(),
             ds, Substitute.For<ICacheHelper>(), readingItemService, new FileService(fs),
-            Substitute.For<IMetadataService>(),
-            Substitute.For<IWordCountAnalyzerService>(),
             Substitute.For<IReadingListService>(),
             Substitute.For<IExternalMetadataService>());
 
         var serviceProvider = Substitute.For<IServiceProvider>();
         serviceProvider.GetService(typeof(IUnitOfWork)).Returns(_unitOfWork);
         serviceProvider.GetService(typeof(IProcessSeries)).Returns(processSeries);
+        serviceProvider.GetService(typeof(IMetadataService)).Returns(Substitute.For<IMetadataService>());
+        serviceProvider.GetService(typeof(IWordCountAnalyzerService))
+            .Returns(Substitute.For<IWordCountAnalyzerService>());
 
         var scope = Substitute.For<IServiceScope>();
         scope.ServiceProvider.Returns(serviceProvider);
