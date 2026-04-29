@@ -690,20 +690,10 @@ public class ReadingListController(
     [HttpPost("regenerate-cover")]
     [ReadingListAccess(allowPromoted: false)]
     [DisallowRole(PolicyConstants.ReadOnlyRole)]
-    public IActionResult RegenerateCover([FromQuery] int readingListId)
+    public ActionResult RegenerateCover([FromQuery] int readingListId)
     {
-        BackgroundJob.Enqueue(() => GenerateReadingListCoverImage(readingListId));
+        BackgroundJob.Enqueue(() => readingListService.GenerateReadingListCoverImage(readingListId, true));
 
         return Ok();
-    }
-
-    public async Task GenerateReadingListCoverImage(int readingListId)
-    {
-        await readingListService.GenerateReadingListCoverImage(readingListId);
-
-        await unitOfWork.CommitAsync();
-
-        await eventHub.SendMessageAsync(MessageFactory.CoverUpdate,
-            MessageFactory.CoverUpdateEvent(readingListId, MessageFactoryEntityTypes.ReadingList), false);
     }
 }
