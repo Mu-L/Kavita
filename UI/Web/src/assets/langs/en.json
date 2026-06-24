@@ -73,7 +73,6 @@
         "auto-login-label": "Auto login",
         "auto-login-tooltip": "Auto redirect to OIDC provider when opening the login screen",
         "disable-password-authentication-label": "Disable password authentication",
-        "disable-password-authentication-tooltip": "Users with the admin role can bypass this restriction",
         "provider-name-label": "Provider name",
         "provider-name-tooltip": "Name shown on the login screen",
 
@@ -1595,6 +1594,7 @@
         "filter-metadata": "Metadata",
         "filter-scrobble": "Scrobble",
         "filter-sync": "Sync",
+        "filter-system": "System",
         "filter-status-label": "Status filter",
         "today": "Today",
         "yesterday": "Yesterday",
